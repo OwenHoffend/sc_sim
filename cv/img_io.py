@@ -1,5 +1,5 @@
+import numpy as np
 from PIL import Image
-from numpy import array
 
 def load_img(path, gs=False):
     """Load an image and return it as a numpy ndarray"""
@@ -7,8 +7,30 @@ def load_img(path, gs=False):
     if gs: #Convert to single-channel greyscale, if desired
         image = image.convert('LA')
         width, height = image.size
-        return array(image)[0:height, 0:width, 0]
-    return array(image)
+        return np.array(image)[0:height, 0:width, 0]
+    return np.array(image)
+
+def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True):
+    """Convert a single image chnanel into an stochastic bitstream of the specified length.
+    bs_gen_func is a bitstream generating function that takes in n (number of bits) and p, 
+    the desired probability. If correlated is True, use the same RNG for all pixels"""
+    height, width = img_channel.shape
+    npb = np.ceil(bs_len / 8.0).astype(np.int) #Compute the number of packed bytes necessary to represent this bitstream
+    bs = np.zeros((height, width, npb), dtype=np.uint8) #Initialize nxn array of to hold bit-packed SC bitstreams
+    for i in range(height): #Populate the bitstream array
+        for j in range(width):
+            bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]) / 255.0, keep_rng=correlated)
+    return bs
+
+def bs_to_img(bs, bs_mean_func):
+    """Convert a stochastic bitstream image back into an image"""
+    height, width, npb = bs.shape
+    img = np.zeros((height, width), dtype=np.uint8)
+    for i in range(height): #Populate the bitstream array
+        for j in range(width):
+            #Default pixel-value encoding is p * 255, might want to try others
+            img[i][j] = np.rint(bs_mean_func(bs[i][j]) * 255).astype(np.uint8)
+    return img
 
 def save_img(img_arr, path):
     """Save an image from a numpy ndarray at the specified path"""
