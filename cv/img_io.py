@@ -32,6 +32,17 @@ def bs_to_img(bs, bs_mean_func):
             img[i][j] = np.rint(bs_mean_func(bs[i][j]) * 255).astype(np.uint8)
     return img
 
+def img_mse(img1, img2):
+    """Compute the MSE between two images.
+       Assumes the two images are the same shape"""
+    h, w = img1.shape
+    return np.sum(np.square(img1 - img2)) / (h * w)
+
+def disp_img_diff(img1, img2):
+    """Display the difference between img1 and img2, taken as img2 - img1"""
+    diff = img2 - img1
+    disp_img(diff)
+
 def save_img(img_arr, path):
     """Save an image from a numpy ndarray at the specified path"""
     Image.fromarray(img_arr).save(path)

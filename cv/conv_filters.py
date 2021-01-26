@@ -48,6 +48,6 @@ def convolve(img, kernel):
 
 if __name__ == "__main__":
     """Perform basic edge detection on a test image"""
-    lena = img_io.load_img("../img/lena256.png", gs=True) #Load test image as greyscale
+    lena = img_io.load_img("./img/lena256.png", gs=True) #Load test image as greyscale
     lena_ed = convolve(lena, EDGE_DETECT_8)
     img_io.disp_img(lena_ed)
