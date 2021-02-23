@@ -15,7 +15,7 @@ class SC_RNG:
             L = LFSR()
             fpoly = L.get_fpolyList(m=lfsr_sz)[0] #The 0th index holds the lfsr poly with the fewest xor gates
             L = LFSR(fpoly=fpoly, initstate='random')
-            self.lfsr = np.zeros(n, dtype=np.uint32) #TODO: Can the dtype specifier be removed?
+            self.lfsr = np.zeros(n, dtype=np.uint32)
             for i in range(n):
                 L.runKCycle(1)
                 self.lfsr[i] = bit_vec_to_int(L.state)
@@ -46,7 +46,7 @@ class SC_RNG:
     def bs_bp_lfsr(self, n, bp, keep_rng=True):
         """Generate a bipolar stochastic bitstream via the bs_lfsr or bs_uniform method. Can be correlated"""
         up = (bp + 1.0) / 2.0
-        return self.bs_lfsr(n, bp, keep_rng=keep_rng)
+        return self.bs_lfsr(n, up, keep_rng=keep_rng)
 
 def bit_vec_to_int(vec):
     """Utility function for converting a np array bit vector to an integer"""
