@@ -33,7 +33,7 @@ class SC_RNG:
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
         lfsr_sz = int(np.ceil(np.log2(n)))
         self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng)
-        return np.packbits(self.lfsr / (2**lfsr_sz-1) <= p)
+        return np.packbits(self.lfsr / ((2**lfsr_sz)-1) <= p)
 
     def up_to_bp_lfsr(self, n, up, keep_rng=True):
         """Map a unipolar SN in the range [0, 1] onto a bipolar one on [0.5, 1]"""
@@ -68,6 +68,9 @@ def bs_mean_bp(bs):
     m = bs_mean(bs) #Unipolar mean
     return 2.0 * m - 1.0
 
+def bs_mean_bp_abs(bs):
+    return abs(bs_mean_bp(bs))
+
 def bs_scc(bsx, bsy):
     """Compute the stochastic cross-correlation between two bitstreams according to Eq. (1)
     in [A. Alaghi and J. P. Hayes, Exploiting correlation in stochastic circuit design]"""
@@ -83,4 +86,4 @@ def bs_scc(bsx, bsy):
 if __name__ == "__main__":
     """Test bs_bp_lfsr"""
     rng = SC_RNG()
-    print(bs_mean_bp(rng.up_to_bp_lfsr(256, 0.25))) #Play with the values here
+    print(bs_mean_bp(rng.up_to_bp_lfsr(512, 0))) #Play with the values here

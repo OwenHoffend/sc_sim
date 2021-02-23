@@ -53,7 +53,7 @@ def plot_mse_vs_input_2d(sc_func, correct, points=10, samples=100, bp=False):
     plt.title("MSE vs. Input SN Value")
     plt.show()
 
-def plot_mse_vs_input_3d(sc_func, correct, points=10, samples=10, x_bp=False, y_bp=False):
+def plot_abs_err_vs_input_3d(sc_func, correct, points=20, samples=25, x_bp=False, y_bp=False):
     if x_bp:
         xvals = np.linspace(-1.0, 1.0, num=points)
     else:
@@ -66,8 +66,8 @@ def plot_mse_vs_input_3d(sc_func, correct, points=10, samples=10, x_bp=False, y_
     for idx, x in enumerate(xvals):
         for idy, y in enumerate(yvals):
             for _ in range(samples):
-                mse_vals[idx][idy] += (sc_func(x, y) - correct(x, y)) ** 2
-            mse_vals[idx][idy] /= samples
+                mse_vals[idy][idx] += abs(sc_func(x, y) - correct(x, y))
+            mse_vals[idy][idx] /= samples
     X, Y = np.meshgrid(xvals, yvals)
     
     fig = plt.figure()
@@ -77,9 +77,10 @@ def plot_mse_vs_input_3d(sc_func, correct, points=10, samples=10, x_bp=False, y_
 
     ax.set_xlabel('X Input Value')
     ax.set_ylabel('Y Input Value')
-    ax.set_zlabel('MSE')
-    plt.title("MSE vs. Input X and Y Values")
+    ax.set_zlabel('Mean Abs Error')
+    ax.set_zlim(0, 1)
     fig.colorbar(surf , shrink=0.5, aspect=5)
+    plt.title("Mean Abs Error vs. Input X and Y Values")
     plt.show()
 
 def plot_output_vs_input_2d(sc_func, correct, points=20, samples=100, bp=False):
@@ -118,16 +119,16 @@ def plot_output_vs_input_3d(sc_func, correct, points=20, samples=20, x_bp=False,
     for idx, x in enumerate(xvals):
         for idy, y in enumerate(yvals):
             for _ in range(samples):
-                zvals[idx][idy] += sc_func(x, y)
-            zvals[idx][idy] /= samples
-            correct_vals[idx][idy] = correct(x, y)
+                zvals[idy][idx] += sc_func(x, y)
+            zvals[idy][idx] /= samples
+            correct_vals[idy][idx] = correct(x, y)
     X, Y = np.meshgrid(xvals, yvals)
     
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    ax.plot_surface(X, Y, zvals, color='r')
     ax.plot_surface(X, Y, correct_vals, color='b')
+    ax.plot_wireframe(X, Y, zvals, color='r')
 
     ax.set_xlabel('X Input Value')
     ax.set_ylabel('Y Input Value')
@@ -138,7 +139,8 @@ def plot_output_vs_input_3d(sc_func, correct, points=20, samples=20, x_bp=False,
 if __name__ == "__main__":
     #plot_img_conv_mse("./img/lena256.png")
     rng = bs.SC_RNG()
-    plot_mse_vs_input_3d(
+    plot_abs_err_vs_input_3d(
         lambda x, y: bs.bs_mean_bp(~(rng.up_to_bp_lfsr(256, x, keep_rng=False) ^ rng.bs_bp_lfsr(256, y, keep_rng=False))),
-        lambda xc, yc: xc * yc
+        lambda xc, yc: xc * yc,
+        y_bp=True
     )

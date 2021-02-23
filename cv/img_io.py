@@ -10,16 +10,19 @@ def load_img(path, gs=False):
         return np.array(image)[0:height, 0:width, 0]
     return np.array(image)
 
-def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True):
+def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, scale=True):
     """Convert a single image chnanel into an stochastic bitstream of the specified length.
     bs_gen_func is a bitstream generating function that takes in n (number of bits) and p, 
     the desired probability. If correlated is True, use the same RNG for all pixels"""
     height, width = img_channel.shape
-    npb = np.ceil(bs_len / 8.0).astype(np.int) #Compute the number of packed bytes necessary to represent this bitstream
+    npb = np.ceil(bs_len / 8.0).astype(int) #Compute the number of packed bytes necessary to represent this bitstream
     bs = np.zeros((height, width, npb), dtype=np.uint8) #Initialize nxn array of to hold bit-packed SC bitstreams
     for i in range(height): #Populate the bitstream array
         for j in range(width):
-            bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]) / 255.0, keep_rng=correlated)
+            if scale:
+                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]) / 255.0, keep_rng=correlated)
+            else:
+                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]), keep_rng=correlated)
     return bs
 
 def bs_to_img(bs, bs_mean_func):
