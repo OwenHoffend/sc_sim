@@ -10,7 +10,7 @@ class SC_RNG:
         self.u = None
         self.lfsr = None
 
-    def _run_lfsr(self, n, lfsr_sz, keep_rng=True):
+    def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False):
         if not keep_rng or self.lfsr is None:
             L = LFSR()
             fpoly = L.get_fpolyList(m=lfsr_sz)[0] #The 0th index holds the lfsr poly with the fewest xor gates
@@ -19,34 +19,41 @@ class SC_RNG:
             for i in range(n):
                 L.runKCycle(1)
                 self.lfsr[i] = bit_vec_to_int(L.state)
+        if inv:
+            mask = (1 << lfsr_sz) - 1
+            return np.bitwise_not(self.lfsr) & mask
+        return self.lfsr
 
-    def bs_uniform(self, n, p, keep_rng=True):
+    def bs_uniform(self, n, p, keep_rng=True, inv=False):
         """Return a numpy array containing a unipolar stochastic bistream
             with value p based on n numbers drawn from the uniform random distribution on [0, 1).
             A mathematically equivalent alternative to bs_bernoulli. 
             The random sample u is kept between invocations if keep_rng=True."""
         if not keep_rng or self.u is None:
             self.u = np.random.rand(1, n) #Generate random vector
-        return np.packbits(self.u <= p) #Apply thresholding, return an efficient bit-packed data structure
+        if inv:
+            return np.packbits((1 - self.u) <= p)
+        else:
+            return np.packbits(self.u <= p) #Apply thresholding, return an efficient bit-packed data structure
 
-    def bs_lfsr(self, n, p, keep_rng=True): #Warning: when keep_rng=False, runtime is very slow 
+    def bs_lfsr(self, n, p, keep_rng=True, inv=False): #Warning: when keep_rng=False, runtime is very slow 
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
         lfsr_sz = int(np.ceil(np.log2(n)))
-        self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng)
-        return np.packbits(self.lfsr / ((2**lfsr_sz)-1) <= p)
+        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv)
+        return np.packbits(lfsr_run / ((2**lfsr_sz)-1) <= p)
 
-    def up_to_bp_lfsr(self, n, up, keep_rng=True):
+    def up_to_bp_lfsr(self, n, up, keep_rng=True, inv=False):
         """Map a unipolar SN in the range [0, 1] onto a bipolar one on [0.5, 1]"""
         lfsr_sz = int(np.ceil(np.log2(2*n))) #Generate an LFSR that is slightly too large
-        self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng)
+        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv)
         msb_mask = 1 << lfsr_sz - 1
-        bp = (self.lfsr & np.full((1, n), ~msb_mask)) / (2**(lfsr_sz-1)) <= up
-        return np.packbits(bp | (self.lfsr & np.full((1, n), msb_mask) == msb_mask))
+        bp = (lfsr_run & np.full((1, n), ~msb_mask)) / (2**(lfsr_sz-1)) <= up
+        return np.packbits(bp | (lfsr_run & np.full((1, n), msb_mask) == msb_mask))
 
-    def bs_bp_lfsr(self, n, bp, keep_rng=True):
+    def bs_bp_lfsr(self, n, bp, keep_rng=True, inv=False):
         """Generate a bipolar stochastic bitstream via the bs_lfsr or bs_uniform method. Can be correlated"""
         up = (bp + 1.0) / 2.0
-        return self.bs_lfsr(n, up, keep_rng=keep_rng)
+        return self.bs_lfsr(n, up, keep_rng=keep_rng, inv=inv)
 
 def bit_vec_to_int(vec):
     """Utility function for converting a np array bit vector to an integer"""
@@ -83,7 +90,26 @@ def bs_scc(bsx, bsy):
     else:
         return (p_actual - p_uncorr) / (p_uncorr + np.maximum(px + py - 1, 0))
 
+def gen_correlated(scc, n, p1, p2, bs_gen_func):
+    """Using the method in [A. Alaghi and J. P. Hayes, Exploiting correlation in stochastic circuit design],
+    generate two bitstreams with a specified SCC value"""
+    bs1 = bs_gen_func(n, p1, keep_rng=True)
+    if scc < 0:
+        bs2_scc1 = bs_gen_func(n, p2, keep_rng=True, inv=True) #scc: -1
+    else:
+        bs2_scc1 = bs_gen_func(n, p2, keep_rng=True) #scc: 1
+    bs2_scc0 = bs_gen_func(n, p2, keep_rng=False)
+    bs_mag = bs_gen_func(n, np.abs(scc), keep_rng=False)
+    scc0_weighted = np.bitwise_and(np.bitwise_not(bs_mag), bs2_scc0)
+    scc1_weighted = np.bitwise_and(bs_mag, bs2_scc1)
+    return bs1, np.bitwise_or(scc0_weighted, scc1_weighted)
+
 if __name__ == "__main__":
     """Test bs_bp_lfsr"""
     rng = SC_RNG()
     print(bs_mean_bp(rng.up_to_bp_lfsr(512, 0))) #Play with the values here
+
+    """Test gen_correlated"""
+    rng = SC_RNG()
+    bs1, bs2 = gen_correlated(-0.33, 1024, 0.33, 0.5, rng.bs_lfsr)
+    print(bs_scc(bs1, bs2))
