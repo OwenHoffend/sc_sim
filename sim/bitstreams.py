@@ -65,30 +65,36 @@ def bs_bernoulli(n, p):
         Faster than bs_uniform if persistent state is not required."""
     return np.packbits(np.random.binomial(1, p, n))
 
-def bs_mean(bs):
-    """Evaluate the probability value of a bitstream, taken as the mean value of the bitstream."""
+def bs_mean(bs, bs_len=None):
+    """Evaluate the probability value of a bitstream, taken as the mean value of the bitstream.
+        For bitstreams that don't align to byte boundaries, use bs_len to supply the exact bitstream length."""
     unp = np.unpackbits(bs)
-    return np.mean(unp)
+    if bs_len != None:
+        return np.sum(unp) / bs_len 
+    else:
+        return np.mean(unp)
 
-def bs_mean_bp(bs):
+def bs_mean_bp(bs, bs_len=None):
     """Evaluate the bipolar probability value of a bitstream"""
-    m = bs_mean(bs) #Unipolar mean
+    m = bs_mean(bs, bs_len=bs_len) #Unipolar mean
     return 2.0 * m - 1.0
 
-def bs_mean_bp_abs(bs):
-    return abs(bs_mean_bp(bs))
+def bs_mean_bp_abs(bs, bs_len=None):
+    return abs(bs_mean_bp(bs, bs_len=bs_len))
 
-def bs_scc(bsx, bsy):
+def bs_scc(bsx, bsy, bs_len=None):
     """Compute the stochastic cross-correlation between two bitstreams according to Eq. (1)
     in [A. Alaghi and J. P. Hayes, Exploiting correlation in stochastic circuit design]"""
-    px = bs_mean(bsx)
-    py = bs_mean(bsy)
+    px = bs_mean(bsx, bs_len=bs_len)
+    py = bs_mean(bsy, bs_len=bs_len)
+    if px in (0, 1) or py in (0, 1):
+        raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
     p_uncorr  = px * py
-    p_actual  = bs_mean(np.bitwise_and(bsx, bsy))
+    p_actual  = bs_mean(np.bitwise_and(bsx, bsy), bs_len=bs_len)
     if p_actual > p_uncorr:
         return (p_actual - p_uncorr) / (np.minimum(px, py) - p_uncorr)
     else:
-        return (p_actual - p_uncorr) / (p_uncorr + np.maximum(px + py - 1, 0))
+        return (p_actual - p_uncorr) / (p_uncorr - np.maximum(px + py - 1, 0))
 
 def gen_correlated(scc, n, p1, p2, bs_gen_func):
     """Using the method in [A. Alaghi and J. P. Hayes, Exploiting correlation in stochastic circuit design],
@@ -111,5 +117,10 @@ if __name__ == "__main__":
 
     """Test gen_correlated"""
     rng = SC_RNG()
-    bs1, bs2 = gen_correlated(-0.33, 1024, 0.33, 0.5, rng.bs_lfsr)
+    bs1, bs2 = gen_correlated(-0.33, 1024, 0.33, 0.33, rng.bs_lfsr)
     print(bs_scc(bs1, bs2))
+
+    """Test forcing SCC to various values"""
+    bs1 = np.packbits(np.array([0,0,1,1,1,0]))
+    bs2 = np.packbits(np.array([1,1,1,0,0,0]))
+    print(bs_scc(bs1, bs2, bs_len=6))
