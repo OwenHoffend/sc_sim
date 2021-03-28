@@ -96,6 +96,17 @@ def bs_scc(bsx, bsy, bs_len=None):
     else:
         return (p_actual - p_uncorr) / (p_uncorr - np.maximum(px + py - 1, 0))
 
+def mc_scc(bs_arr, bs_len=None):
+    """Test if an array of bitstreams are mutually correlated, and, if so, at what mutual correlation value"""
+    mc1 = bs_scc(bs_arr[0], bs_arr[1], bs_len=bs_len)
+    sz = len(bs_arr)
+    for i in range(1, sz-1):
+        for j in range(i+1, sz):
+            mc = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
+            if mc != mc1:
+                return False, mc, mc1
+    return True, mc1
+
 def gen_correlated(scc, n, p1, p2, bs_gen_func):
     """Using the method in [A. Alaghi and J. P. Hayes, Exploiting correlation in stochastic circuit design],
     generate two bitstreams with a specified SCC value"""
@@ -112,15 +123,22 @@ def gen_correlated(scc, n, p1, p2, bs_gen_func):
 
 if __name__ == "__main__":
     """Test bs_bp_lfsr"""
-    rng = SC_RNG()
-    print(bs_mean_bp(rng.up_to_bp_lfsr(512, 0))) #Play with the values here
+    #rng = SC_RNG()
+    #print(bs_mean_bp(rng.up_to_bp_lfsr(512, 0))) #Play with the values here
 
     """Test gen_correlated"""
-    rng = SC_RNG()
-    bs1, bs2 = gen_correlated(-0.33, 1024, 0.33, 0.33, rng.bs_lfsr)
-    print(bs_scc(bs1, bs2))
+    #rng = SC_RNG()
+    #bs1, bs2 = gen_correlated(-0.33, 1024, 0.33, 0.33, rng.bs_lfsr)
+    #print(bs_scc(bs1, bs2))
 
     """Test forcing SCC to various values"""
-    bs1 = np.packbits(np.array([0,0,1,1,1,0]))
+    #bs1 = np.packbits(np.array([0,0,1,1,1,0]))
+    #bs2 = np.packbits(np.array([1,1,1,0,0,0]))
+    #print(bs_scc(bs1, bs2, bs_len=6))
+
+    """Test mutually mc_scc"""
+    bs1 = np.packbits(np.array([1,1,0,0,1,0]))
     bs2 = np.packbits(np.array([1,1,1,0,0,0]))
-    print(bs_scc(bs1, bs2, bs_len=6))
+    bs3 = np.packbits(np.array([1,0,1,1,0,0]))
+    bs_arr = [bs1, bs2, bs3]
+    print(mc_scc(bs_arr, bs_len=6))
