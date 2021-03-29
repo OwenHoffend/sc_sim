@@ -88,7 +88,8 @@ def bs_scc(bsx, bsy, bs_len=None):
     px = bs_mean(bsx, bs_len=bs_len)
     py = bs_mean(bsy, bs_len=bs_len)
     if px in (0, 1) or py in (0, 1):
-        raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
+        #raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
+        return None
     p_uncorr  = px * py
     p_actual  = bs_mean(np.bitwise_and(bsx, bsy), bs_len=bs_len)
     if p_actual > p_uncorr:
@@ -96,16 +97,25 @@ def bs_scc(bsx, bsy, bs_len=None):
     else:
         return (p_actual - p_uncorr) / (p_uncorr - np.maximum(px + py - 1, 0))
 
+def get_corr_mat(bs_arr, bs_len=None):
+    """Returns a correlation matrix representing the measured scc values of the given bitstream array"""
+    n = len(bs_arr)
+    Cij = np.zeros((n, n))
+    for i in range(n):
+        for j in range(i):
+            Cij[i][j] = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
+    return Cij
+
+def mc_mat(c, n):
+    """Returns a correlation matrix representing mutual correlation at the desired c value"""
+    m = np.ones((n, n)) * c
+    return np.tril(m, -1)
+
 def mc_scc(bs_arr, bs_len=None):
-    """Test if an array of bitstreams are mutually correlated, and, if so, at what mutual correlation value"""
-    mc1 = bs_scc(bs_arr[0], bs_arr[1], bs_len=bs_len)
-    sz = len(bs_arr)
-    for i in range(1, sz-1):
-        for j in range(i+1, sz):
-            mc = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
-            if mc != mc1:
-                return False, mc, mc1
-    return True, mc1
+    """Test if an array of bitstreams are mutually correlated"""
+    Cij = get_corr_mat(bs_arr, bs_len=bs_len)
+    c = Cij[0][1]
+    return np.all((Cij == c) | (Cij == 0))
 
 def gen_correlated(scc, n, p1, p2, bs_gen_func):
     """Using the method in [A. Alaghi and J. P. Hayes, Exploiting correlation in stochastic circuit design],
@@ -137,8 +147,17 @@ if __name__ == "__main__":
     #print(bs_scc(bs1, bs2, bs_len=6))
 
     """Test mutually mc_scc"""
-    bs1 = np.packbits(np.array([1,1,0,0,1,0]))
-    bs2 = np.packbits(np.array([1,1,1,0,0,0]))
-    bs3 = np.packbits(np.array([1,0,1,1,0,0]))
+    bs1 = np.packbits(np.array([1,0,1,0,1,1]))
+    bs2 = np.packbits(np.array([1,1,0,0,1,1]))
+    bs3 = np.packbits(np.array([0,0,1,1,0,0]))
     bs_arr = [bs1, bs2, bs3]
+    print(get_corr_mat(bs_arr, bs_len=6))
     print(mc_scc(bs_arr, bs_len=6))
+
+    """Test mutual correlation generation"""
+    #print(mc_mat(-1, 3))
+    #rng = SC_RNG()
+    #n = 5
+    #bs_arr = [rng.bs_lfsr(16, 0.5, keep_rng=False) for _ in range(n)]
+    #Cij = get_corr_mat(bs_arr)
+    #print(Cij)

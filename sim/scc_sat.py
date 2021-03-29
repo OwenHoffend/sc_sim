@@ -30,8 +30,9 @@ def num_possible_sccs_eq(N, n, p_arr):
         res *= special.binom(N, Ni)
     return res / np.math.factorial(N)
 
-def num_possible_sccs_bf(N, n, p_arr):
+def possible_sccs_bf(N, p_arr):
     """Compute the number of possible sccs via a brute force count"""
+    n = p_arr.size
     def get_sccs(Pi, Pj):
         sccs = set()
         Ni = np.round(Pi * N).astype(np.uint32)
@@ -53,8 +54,7 @@ def num_possible_sccs_bf(N, n, p_arr):
             final_sccs = final_sccs.intersection(c)
     return final_sccs
 
-
-def scc_sat(N, n, c, p_arr, q_err_thresh=0.01, m_err_thresh=0.01):
+def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01):
     """This is the primary SCC satisfaction function"""
     
     #Quantization error check (O(n))
@@ -66,24 +66,44 @@ def scc_sat(N, n, c, p_arr, q_err_thresh=0.01, m_err_thresh=0.01):
     #n=2 SCC satisfiability check (O(n^2))
     Dij = np.zeros((n,n), dtype=np.uint32)
     for i in range(n):
-        for j in range(n):
-            if i != j:
-                Ni, Nj = N_arr[i], N_arr[j]
-                No_max = np.minimum(Ni, Nj)
-                No_min = np.maximum(Ni + Nj - N, 0)
-                PiNj = (Ni / N) * Nj
-                cond = c * (No_max - PiNj)
-                if cond > 0:
-                    m = cond + PiNj
-                else:
-                    m =  c * (PiNj - No_min) + PiNj
-                if (not (No_min <= m <= No_max)) or \
-                    (np.abs(np.round(m) - m) > m_err_thresh): #Non-integer overlap count
-                    print("SCC SAT FAIL: n=2 check failed")
-                    return False
-                Dij[i][j] = Ni + Nj - 2*m
+        for j in range(i): #upper triangle only
+            Ni, Nj = N_arr[i], N_arr[j]
+            No_max = np.minimum(Ni, Nj)
+            No_min = np.maximum(Ni + Nj - N, 0)
+            PiNj = (Ni / N) * Nj
+            cond = c_mat[i][j] * (No_max - PiNj)
+            if cond > 0:
+                m = cond + PiNj
+            else:
+                m =  c_mat[i][j] * (PiNj - No_min) + PiNj
+            rm = np.round(m)
+            if (not (No_min <= rm <= No_max)):
+                print("SCC SAT FAIL: n=2 bounds check failed")
+                return False
+            if (np.abs(rm - m) > m_err_thresh): #Non-integer overlap count
+                print("SCC SAT FAIL: n=2 integer check failed")
+                return False
+            Dij[i][j] = Ni + Nj - 2*rm
 
-    #n>2 SCC satisfiability check
+    #n>2 SCC satisfiability check - could perhaps use a matrix multiplication method here too
+    for i in range(n):
+        for j in range(i): # i > j
+            for k in range(j): # j > k 
+                if k != i and k != j: 
+                    Ds = Dij[i][j] + Dij[j][k] + Dij[i][k]
+                    if Ds % 2 == 1: 
+                        print("SCC SAT FAIL: n>2 evenness check failed")
+                        return False
+                    if Ds > 2 * N:
+                        print("SCC SAT FAIL: n>2 magnitude check failed")
+                        return False
+
+    print("SCC SAT PASS")
+    return True
+
+def gen_multi_correlated(c_mat, N, p_arr):
+    """Generate a set of bitstreams that are correlated according to the supplied correlation matrix"""
+    pass
 
 def N_required_overlaps(Ni, Nj, c, N):
     No_max = np.minimum(Ni, Nj)
@@ -127,6 +147,24 @@ def N_overlaps_sweep_test(max_N):
                 print("FAILED: bs1={}, bs2={}, scc={}, a_ov={}, r_ov={}".format(bs1_bin, bs2_bin, scc, n_a_ov, n_r_ov))
                 return
     print("PASSED")
+
+def scc_sat_rand_test(max_n, max_N, iters):
+    """Sweep through a set of random valid bit configurations, and verify that scc_sat reports true for all of them"""
+    print("Total scc_sat random iters will be {}".format(iters))
+    for i in range(iters):
+        n = np.random.randint(1, max_n+1)
+        N = np.random.randint(1, max_N+1)
+        rng = bs.SC_RNG()
+        bs_arr = [rng.bs_uniform(N, np.random.rand(), keep_rng=False) for _ in range(n)]
+        p_arr = np.array([bs.bs_mean(s, bs_len=N) for s in bs_arr])
+        if np.any(p_arr == 1.0) or np.any(p_arr == 0.0): #Filter out streams with undefined sccs wrt the others
+            continue
+        c_mat = bs.get_corr_mat(bs_arr, bs_len=N)
+        if not scc_sat(N, n, c_mat, p_arr):
+            print("FAILED with: N={}, n={}, c_mat=\n{}, p_arr={}".format(N, n, c_mat, p_arr))
+            return
+        print("Iter {} with N={}, n={} PASSED".format(i, N, n))
+    print("OVERALL PASSED")
 
 def N_overlaps_rand_test(max_N, iters):
     """Test a large number of random bitstream configurations and compare the overlap to the correct value"""
@@ -176,6 +214,17 @@ if __name__ == "__main__":
     """N overlaps random test"""
     #N_overlaps_rand_test(31, 1000000)
 
-    """num_possible_sccs_bf test"""
-    p_arr = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
-    print(num_possible_sccs_bf(6, 6, p_arr))
+    """possible_sccs_bf test"""
+    #p_arr = np.array([0.544343, 0.5, 0.9, 0.9])
+    #print(possible_sccs_bf(4, p_arr))
+
+    """Test SCC sat"""
+    #scc_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.333333, 0.333333, 0.33333])) #Example of a test case that passes
+    #scc_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.5, 0.5, 0.5])) #Example of a test case that passes n=2 but fails n>2
+    #c_mat = np.array([
+    #    [0, 0, 0],
+    #    [0.25, 0, 0],
+    #    [-0.25, -1, 0]
+    #])
+    #scc_sat(6, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333])) #Example of a condition that passes using a correlation matrix
+    scc_sat_rand_test(20, 256, 100000)
