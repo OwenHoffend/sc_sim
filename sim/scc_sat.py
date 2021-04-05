@@ -2,6 +2,8 @@
 
 import numpy as np
 import bitstreams as bs
+import itertools
+import random
 from scipy import special
 
 def min_add_matmul(A, B):
@@ -76,8 +78,6 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=Fa
 
     #n=2 SCC satisfiability check (O(n^2))
     Dij = np.zeros((n,n), dtype=np.uint32)
-    if for_gen: #Save the Mij matrix if this satisfaction check is being used for correlated bitstream generation
-        Mij = np.zeros((n,n), dtype=np.uint32)
     for i in range(n):
         for j in range(i): #upper triangle only
             Ni, Nj = N_arr[i], N_arr[j]
@@ -96,8 +96,6 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=Fa
             if (np.abs(rm - m) > m_err_thresh): #Non-integer overlap count
                 print("SCC SAT FAIL: n=2 integer check failed")
                 return False
-            if for_gen:
-                Mij[i][j] = rm
             Dij[i][j] = Ni + Nj - 2*rm
 
     #n>2 SCC satisfiability check - could perhaps use a matrix multiplication method here too
@@ -115,17 +113,15 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=Fa
 
     print("SCC SAT PASS")
     if for_gen:
-        return True, Mij, N_arr
+        return True, Dij, N_arr
     return True
 
-def pset(s):
-    """Utility function for gen_multi_correlated"""
-    if len(s) <= 0:
-        yield []
-    else:
-        for item in pset(s[1:]):
-            yield [s[0]]+item
-            yield item
+def hd(bv1, bv2):
+    return np.sum(np.abs(bv1 - bv2))
+
+def get_combs(N, N1):
+    idxs = {s for s in range(N)}
+    return itertools.combinations(idxs, N1)
 
 def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
     """Generate a set of bitstreams that are correlated according to the supplied correlation matrix"""
@@ -134,35 +130,41 @@ def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
     sat_result = scc_sat(N, n, c_mat, p_arr, for_gen=True)
     if not sat_result:
         print("GEN_MULTI_CORRELATED FAILED: SCC matrix not satisfiable")
-        return
+        return False
 
     #Perform the generation
-    Mij = sat_result[1]
+    Dij = sat_result[1]
     N_arr = sat_result[2]
     bs_arr = np.zeros((n,N), dtype=np.uint8)
-    idx_set = pset(range(n))
-    nxt = True
+    bs_arr[0, :] = np.concatenate((np.ones(N_arr[0]), np.zeros(N - N_arr[0])))
+    if n > 1:
+        done = False
+        while not done:
+            for i in range(1, n):
+                found = False
+                found_list = []
+                for item in get_combs(N, N_arr[i]):
+                    bin_arr = np.zeros(N)
+                    bin_arr[list(item)] = 1
+                    valid = True
+                    for j in range(i):
+                        if hd(bin_arr, bs_arr[j, :]) != Dij[i][j]:
+                            valid = False
+                    if valid:
+                        found = True
+                        found_list.append(bin_arr)
+                if not found:
+                    bs_arr = np.zeros((n,N), dtype=np.uint8)
+                    bs_arr[0, :] = np.concatenate((np.ones(N_arr[0]), np.zeros(N - N_arr[0])))
 
-    b = 0
-    while b < N:
-        if nxt:
-            idxs = next(idx_set)
-            nxt = False
-        if idxs == []:
-            break
-        isz = len(idxs)
-        if np.all(N_arr[idxs] > 0) and \
-            (isz == 1 or np.all(Mij[idxs, :][:, idxs] + np.triu(np.ones((isz, isz), dtype=np.uint8)) > 0)):
-            bs_arr[idxs, b] = 1
-            N_arr[idxs] -= 1
-            Mij_temp = Mij[idxs, :]
-            Mij_temp[:, idxs] -= np.tril(np.ones((isz, isz), dtype=np.uint8), -1)
-            Mij[idxs, :] = Mij_temp
-            b += 1
-        else:
-            nxt = True
+                    break
+                else:
+                    bs_arr[i, :] = random.choice(found_list)
+            else:
+                done = True
 
     #Verify the generation
+    print(c_mat)
     print(bs_arr)
     if verify:
         cmat_actual = bs.get_corr_mat(bs_arr, bs_len=N)
@@ -214,8 +216,8 @@ def scc_sat_rand_test(max_n, max_N, iters):
     """Sweep through a set of random valid bit configurations, and verify that scc_sat reports true for all of them"""
     print("Total scc_sat random iters will be {}".format(iters))
     for i in range(iters):
-        n = np.random.randint(1, max_n+1)
-        N = np.random.randint(1, max_N+1)
+        n = max_n #np.random.randint(1, max_n+1)
+        N = max_N #np.random.randint(1, max_N+1)
         rng = bs.SC_RNG()
         bs_arr = [rng.bs_uniform(N, np.random.rand(), keep_rng=False) for _ in range(n)]
         p_arr = np.array([bs.bs_mean(s, bs_len=N) for s in bs_arr])
@@ -225,7 +227,7 @@ def scc_sat_rand_test(max_n, max_N, iters):
         if not scc_sat(N, n, c_mat, p_arr):
             print("FAILED with: N={}, n={}, c_mat=\n{}, p_arr={}".format(N, n, c_mat, p_arr))
             return
-        print("Iter {} with N={}, n={} PASSED".format(i, N, n))
+        print("Iter {} with N={}, n={}, p_arr={} PASSED".format(i, N, n, p_arr))
     print("OVERALL PASSED")
 
 def gen_multi_corr_rand_test(max_n, max_N, iters):
@@ -243,7 +245,24 @@ def gen_multi_corr_rand_test(max_n, max_N, iters):
         if not gen_multi_correlated(N, n, c_mat, p_arr, verify=True):
             return
         print("Iter {} with N={}, n={} PASSED".format(i, N, n))
-    print("OVERALL PASSED")   
+    print("OVERALL PASSED")
+
+def plot_mcc_change():
+    n = 6
+    N = 16
+    for scc in np.linspace(-1, 1, 33):
+        c_mat = bs.mc_mat(scc, n)
+        valid_ps = [float(i / N) for i in range(1, N-1)]
+        for p in valid_ps:
+            p_arr = [p for _ in range(n)]
+            result = gen_multi_correlated(N, n, c_mat, np.array(p_arr), verify=True)
+            if result != False:
+                bss = result[1]
+                print(bss)
+                break
+        else:
+            print("Attempt at scc: {} failed".format(scc))
+
 
 def N_overlaps_rand_test(max_N, iters):
     """Test a large number of random bitstream configurations and compare the overlap to the correct value"""
@@ -306,7 +325,7 @@ if __name__ == "__main__":
     #    [-0.25, -1, 0]
     #])
     #scc_sat(6, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333])) #Example of a condition that passes using a correlation matrix
-    #scc_sat_rand_test(3, 8, 1000000)
+    #scc_sat_rand_test(10, 128, 1000000)
 
     """Test gen_multi_correlated"""
     #c_mat = np.array([
@@ -316,11 +335,12 @@ if __name__ == "__main__":
     #])
     #gen_multi_correlated(6, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333]), verify=True)
 
-    c_mat = np.array([
-        [0,0,0],
-        [-1,0,0],
-        [-1,0.1111111111,0]
-    ])
-    p_arr = np.array([0.875, 0.625, 0.375])
-    gen_multi_correlated(8, 3, c_mat, p_arr, verify=True)
-    #gen_multi_corr_rand_test(3, 8, 10000)
+    #c_mat = np.array([
+    #    [0,0,0],
+    #    [-1,0,0],
+    #    [-1,0.1111111111,0]
+    #])
+    #p_arr = np.array([0.875, 0.625, 0.375])
+    #gen_multi_correlated(16, 3, c_mat, p_arr, verify=True)
+    gen_multi_corr_rand_test(8, 16, 1000)
+    #plot_mcc_change()
