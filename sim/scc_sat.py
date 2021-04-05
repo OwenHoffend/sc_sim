@@ -116,12 +116,21 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=Fa
         return True, Dij, N_arr
     return True
 
-def hd(bv1, bv2):
-    return np.sum(np.abs(bv1 - bv2))
-
 def get_combs(N, N1):
     idxs = {s for s in range(N)}
     return itertools.combinations(idxs, N1)
+
+def next_cand(N, N1, Dij, bs_arr, i):
+    g = get_combs(N, N1)
+    for c in g:
+        bin_arr = np.zeros(N)
+        bin_arr[list(c)] = 1
+        valid = True
+        for j in range(i):
+            if bs.hamming_dist(bin_arr, bs_arr[j, :]) != Dij[i][j]:
+                valid = False
+        if valid:
+            yield bin_arr
 
 def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
     """Generate a set of bitstreams that are correlated according to the supplied correlation matrix"""
@@ -136,32 +145,27 @@ def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
     Dij = sat_result[1]
     N_arr = sat_result[2]
     bs_arr = np.zeros((n,N), dtype=np.uint8)
-    bs_arr[0, :] = np.concatenate((np.ones(N_arr[0]), np.zeros(N - N_arr[0])))
-    if n > 1:
-        done = False
-        while not done:
-            for i in range(1, n):
-                found = False
-                found_list = []
-                for item in get_combs(N, N_arr[i]):
-                    bin_arr = np.zeros(N)
-                    bin_arr[list(item)] = 1
-                    valid = True
-                    for j in range(i):
-                        if hd(bin_arr, bs_arr[j, :]) != Dij[i][j]:
-                            valid = False
-                    if valid:
-                        found = True
-                        found_list.append(bin_arr)
-                if not found:
-                    bs_arr = np.zeros((n,N), dtype=np.uint8)
-                    bs_arr[0, :] = np.concatenate((np.ones(N_arr[0]), np.zeros(N - N_arr[0])))
 
-                    break
-                else:
-                    bs_arr[i, :] = random.choice(found_list)
+    def gmc_rec(i):
+        """Recursive portion of gen_multi_correlated"""
+        nonlocal N, n, N_arr, Dij, bs_arr
+        if i == n-1:
+            sentinel = 's'
+            last_cand = next(next_cand(N, N_arr[i], Dij, bs_arr, i), sentinel)
+            if last_cand is not sentinel:
+                bs_arr[i, :] = last_cand
+                return True
             else:
-                done = True
+                return False
+        else:
+            for cand in next_cand(N, N_arr[i], Dij, bs_arr, i):
+                bs_arr[i, :] = cand
+                return gmc_rec(i+1)
+        #when the loop runs out, the function will recurse back and try a different lower-level assignment
+
+    if not gmc_rec(0):
+        print("GEN_MULTI_CORRELATED FAILED: Couldn't find a valid solution")
+        return False
 
     #Verify the generation
     print(c_mat)
@@ -174,7 +178,7 @@ def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
             return False
         for idx, bs_i in enumerate(bs_arr):
             p_actual = bs.bs_mean(np.packbits(bs_i), bs_len=N)
-            if p_actual != p_arr[idx]:
+            if np.any(np.abs(p_actual - p_arr[idx]) > 1e-6):
                 print("GEN_MULTI_CORRELATED FAILED: Resulting probability is incorrect: {} (should be {})".format(p_actual, p_arr[idx]))
                 return False
         print("GEN_MULTI_CORRELATED PASS")
@@ -328,12 +332,12 @@ if __name__ == "__main__":
     #scc_sat_rand_test(10, 128, 1000000)
 
     """Test gen_multi_correlated"""
-    #c_mat = np.array([
-    #    [0, 0, 0],
-    #    [0.25, 0, 0],
-    #    [-0.25, -1, 0]
-    #])
-    #gen_multi_correlated(6, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333]), verify=True)
+    c_mat = np.array([
+        [0, 0, 0],
+        [0.25, 0, 0],
+        [-0.25, -1, 0]
+    ])
+    gen_multi_correlated(24, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333]), verify=True)
 
     #c_mat = np.array([
     #    [0,0,0],
@@ -342,5 +346,5 @@ if __name__ == "__main__":
     #])
     #p_arr = np.array([0.875, 0.625, 0.375])
     #gen_multi_correlated(16, 3, c_mat, p_arr, verify=True)
-    gen_multi_corr_rand_test(8, 16, 1000)
+    #gen_multi_corr_rand_test(8, 16, 1000)
     #plot_mcc_change()

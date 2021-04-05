@@ -116,6 +116,10 @@ def mc_scc(bs_arr, bs_len=None):
     Cij = get_corr_mat(bs_arr, bs_len=bs_len)
     c = Cij[0][1]
     return np.all((Cij == c) | (Cij == 0))
+    
+def hamming_dist(bv1, bv2):
+    """Return the Hamming Distance between two bitstreams"""
+    return np.sum(np.abs(bv1 - bv2))
 
 def gen_correlated(scc, n, p1, p2, bs_gen_func):
     """Using the method in [A. Alaghi and J. P. Hayes, Exploiting correlation in stochastic circuit design],
