@@ -6,20 +6,6 @@ import itertools
 import random
 from scipy import special
 
-def min_add_matmul(A, B):
-    """Perform a matrix multiplication of two same-shaped square matrices, but map the operands
-        + --> max, * --> +. This is inspired by the Floyd-Warshall Algorithm"""
-    ma, na = A.shape
-    mb, nb = B.shape
-    if not (ma == na == mb == nb):
-        raise ValueError("A and B must be same-shaped square matrices")
-
-    ans = np.zeros((ma, ma))
-    for i in range(ma):
-        for j in range(ma):
-            ans[i][j] = np.max(A[i, :] + B[:, j])
-    return ans
-
 def bin_array(num, m):
     """Convert a positive integer num into an m-bit bit vector"""
     return np.array(list(np.binary_repr(num).zfill(m))).astype(np.int8)
@@ -42,30 +28,6 @@ def Mij(Ni, Nj, c, N):
         return cond + PiNj
     else:
         return c * (PiNj - No_min) + PiNj
-
-def possible_sccs_bf(N, p_arr):
-    """Compute the number of possible sccs via a brute force count"""
-    n = p_arr.size
-    def get_sccs(Pi, Pj):
-        sccs = set()
-        Ni = np.round(Pi * N).astype(np.uint32)
-        Nj = np.round(Pj * N).astype(np.uint32)
-        PiNj = Pi * Nj
-        No_max = np.minimum(Ni, Nj)
-        No_min = np.maximum(Ni + Nj - N, 0)
-        for No in range(No_min, No_max + 1):
-            if No > PiNj:
-                sccs.add((No - PiNj) / (No_max - PiNj))
-            else:
-                sccs.add((No - PiNj) / (PiNj - No_min))
-        return sccs
-    
-    final_sccs = get_sccs(p_arr[0], p_arr[1])
-    for i in range(1, n-1):
-        for j in range(i+1, n):
-            c = get_sccs(p_arr[i], p_arr[j])
-            final_sccs = final_sccs.intersection(c)
-    return final_sccs
 
 def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=False):
     """This is the primary SCC satisfaction function"""
@@ -111,7 +73,7 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=Fa
                         print("SCC SAT FAIL: n>2 magnitude check failed")
                         return False
 
-    print("SCC SAT PASS")
+    print("SCC SAT PASS @ N={}, n={}".format(N, n))
     if for_gen:
         return True, Dij, N_arr
     return True
@@ -141,6 +103,9 @@ def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
         print("GEN_MULTI_CORRELATED FAILED: SCC matrix not satisfiable")
         return False
 
+    print(c_mat)
+    print(p_arr)
+
     #Perform the generation
     Dij = sat_result[1]
     N_arr = sat_result[2]
@@ -160,15 +125,15 @@ def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
         else:
             for cand in next_cand(N, N_arr[i], Dij, bs_arr, i):
                 bs_arr[i, :] = cand
-                return gmc_rec(i+1)
-        #when the loop runs out, the function will recurse back and try a different lower-level assignment
+                if gmc_rec(i+1):
+                    return True
+            return False
 
     if not gmc_rec(0):
         print("GEN_MULTI_CORRELATED FAILED: Couldn't find a valid solution")
         return False
 
     #Verify the generation
-    print(c_mat)
     print(bs_arr)
     if verify:
         cmat_actual = bs.get_corr_mat(bs_arr, bs_len=N)
@@ -251,23 +216,6 @@ def gen_multi_corr_rand_test(max_n, max_N, iters):
         print("Iter {} with N={}, n={} PASSED".format(i, N, n))
     print("OVERALL PASSED")
 
-def plot_mcc_change():
-    n = 6
-    N = 16
-    for scc in np.linspace(-1, 1, 33):
-        c_mat = bs.mc_mat(scc, n)
-        valid_ps = [float(i / N) for i in range(1, N-1)]
-        for p in valid_ps:
-            p_arr = [p for _ in range(n)]
-            result = gen_multi_correlated(N, n, c_mat, np.array(p_arr), verify=True)
-            if result != False:
-                bss = result[1]
-                print(bss)
-                break
-        else:
-            print("Attempt at scc: {} failed".format(scc))
-
-
 def N_overlaps_rand_test(max_N, iters):
     """Test a large number of random bitstream configurations and compare the overlap to the correct value"""
     print("Total overlap sweep iters will be: {}".format(iters))
@@ -332,12 +280,12 @@ if __name__ == "__main__":
     #scc_sat_rand_test(10, 128, 1000000)
 
     """Test gen_multi_correlated"""
-    c_mat = np.array([
-        [0, 0, 0],
-        [0.25, 0, 0],
-        [-0.25, -1, 0]
-    ])
-    gen_multi_correlated(24, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333]), verify=True)
+    #c_mat = np.array([
+    #    [0, 0, 0],
+    #    [0.25, 0, 0],
+    #    [-0.25, -1, 0]
+    #])
+    #gen_multi_correlated(24, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333]), verify=True)
 
     #c_mat = np.array([
     #    [0,0,0],
@@ -346,5 +294,5 @@ if __name__ == "__main__":
     #])
     #p_arr = np.array([0.875, 0.625, 0.375])
     #gen_multi_correlated(16, 3, c_mat, p_arr, verify=True)
-    #gen_multi_corr_rand_test(8, 16, 1000)
+    gen_multi_corr_rand_test(8, 24, 10000)
     #plot_mcc_change()
