@@ -1,7 +1,7 @@
 #Simulations for the SCC satisfiability problem
 
 import numpy as np
-import bitstreams as bs
+import sim.bitstreams as bs
 import itertools
 import random
 from scipy import special
@@ -29,13 +29,14 @@ def Mij(Ni, Nj, c, N):
     else:
         return c * (PiNj - No_min) + PiNj
 
-def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=False):
+def scc_sat(N, n, c_mat, p_arr, q_err_thresh=1e-6, m_err_thresh=1e-6, for_gen=False, print_stat=True, is_mc=False):
     """This is the primary SCC satisfaction function"""
     
     #Quantization error check (O(n))
     N_arr = np.round(N * p_arr).astype(np.uint32)
     if np.any(np.abs(N_arr - N * p_arr) > q_err_thresh):
-        print("SCC SAT FAIL: Quantization error check failed.")
+        if print_stat:
+            print("SCC SAT FAIL: Quantization error check failed.")
         return False
 
     #n=2 SCC satisfiability check (O(n^2))
@@ -53,10 +54,12 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=Fa
                 m =  c_mat[i][j] * (PiNj - No_min) + PiNj
             rm = np.round(m)
             if (not (No_min <= rm <= No_max)):
-                print("SCC SAT FAIL: n=2 bounds check failed")
+                if print_stat:
+                    print("SCC SAT FAIL: n=2 bounds check failed")
                 return False
             if (np.abs(rm - m) > m_err_thresh): #Non-integer overlap count
-                print("SCC SAT FAIL: n=2 integer check failed")
+                if print_stat:
+                    print("SCC SAT FAIL: n=2 integer check failed")
                 return False
             Dij[i][j] = Ni + Nj - 2*rm
 
@@ -66,14 +69,23 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=0.01, m_err_thresh=0.01, for_gen=Fa
             for k in range(j): # j > k 
                 if k != i and k != j: 
                     Ds = Dij[i][j] + Dij[j][k] + Dij[i][k]
-                    if Ds % 2 == 1: 
-                        print("SCC SAT FAIL: n>2 evenness check failed")
+                    if Ds % 2 == 1:
+                        if print_stat: 
+                            print("SCC SAT FAIL: n>2 evenness check failed")
                         return False
                     if Ds > 2 * N:
-                        print("SCC SAT FAIL: n>2 magnitude check failed")
+                        if print_stat:
+                            print("SCC SAT FAIL: n>2 magnitude check failed")
                         return False
 
-    print("SCC SAT PASS @ N={}, n={}".format(N, n))
+    if is_mc: #FIXME
+        if n * Dij[1][0] > 2 * N:
+            if print_stat:
+                print("SCC SAT FAIL: n>2 MC check failed")
+            return False
+
+    if print_stat:
+        print("SCC SAT PASS @ N={}, n={}".format(N, n))
     if for_gen:
         return True, Dij, N_arr
     return True
@@ -94,17 +106,19 @@ def next_cand(N, N1, Dij, bs_arr, i):
         if valid:
             yield bin_arr
 
-def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
+def gen_multi_correlated(N, n, c_mat, p_arr, verify=False, is_mc=False, pack_output=True, print_stat=True):
     """Generate a set of bitstreams that are correlated according to the supplied correlation matrix"""
 
     #Test if the desired parameters are satisfiable
-    sat_result = scc_sat(N, n, c_mat, p_arr, for_gen=True)
+    sat_result = scc_sat(N, n, c_mat, p_arr, for_gen=True, is_mc=is_mc, print_stat=print_stat)
     if not sat_result:
-        print("GEN_MULTI_CORRELATED FAILED: SCC matrix not satisfiable")
+        if print_stat:
+            print("GEN_MULTI_CORRELATED FAILED: SCC matrix not satisfiable")
         return False
 
-    print(c_mat)
-    print(p_arr)
+    if print_stat:
+        print(c_mat)
+        print(p_arr)
 
     #Perform the generation
     Dij = sat_result[1]
@@ -130,24 +144,33 @@ def gen_multi_correlated(N, n, c_mat, p_arr, verify=False):
             return False
 
     if not gmc_rec(0):
-        print("GEN_MULTI_CORRELATED FAILED: Couldn't find a valid solution")
+        if print_stat:
+            print("GEN_MULTI_CORRELATED FAILED: Couldn't find a valid solution")
         return False
 
     #Verify the generation
-    print(bs_arr)
+    if print_stat:
+        print(bs_arr)
     if verify:
         cmat_actual = bs.get_corr_mat(bs_arr, bs_len=N)
         if np.any(np.abs(cmat_actual - c_mat) > 1e-6):
-            print("GEN_MULTI_CORRELATED FAILED: Resulting SCC Matrix doesn't match: \n {} \n should be \n {}"
-            .format(cmat_actual, c_mat))
+            if print_stat:
+                print("GEN_MULTI_CORRELATED FAILED: Resulting SCC Matrix doesn't match: \n {} \n should be \n {}"
+                .format(cmat_actual, c_mat))
             return False
         for idx, bs_i in enumerate(bs_arr):
             p_actual = bs.bs_mean(np.packbits(bs_i), bs_len=N)
             if np.any(np.abs(p_actual - p_arr[idx]) > 1e-6):
-                print("GEN_MULTI_CORRELATED FAILED: Resulting probability is incorrect: {} (should be {})".format(p_actual, p_arr[idx]))
+                if print_stat:
+                    print("GEN_MULTI_CORRELATED FAILED: Resulting probability is incorrect: {} (should be {})".format(p_actual, p_arr[idx]))
                 return False
-        print("GEN_MULTI_CORRELATED PASS")
-    return True, np.packbits(bs_arr, axis=1)
+        if print_stat:
+            print("GEN_MULTI_CORRELATED PASS")
+
+    if pack_output:
+        return True, np.packbits(bs_arr, axis=1)
+    else:
+        return True, bs_arr
 
 def N_actual_overlaps(bs1, bs2):
     unp = np.unpackbits(np.bitwise_and(bs1, bs2))
@@ -240,19 +263,6 @@ def N_overlaps_rand_test(max_N, iters):
     print("PASSED")
 
 if __name__ == "__main__":
-    """Test min_add_matmul"""
-    #A = np.array([
-    #    [0, 2, 1, 4],
-    #    [2, 0, 3, 6],
-    #    [1, 3, 0, 3],
-    #    [4, 6, 3, 0],
-    #])
-
-    #A_sq = min_add_matmul(A, A)
-    #print(A_sq)
-    #A_cu = min_add_matmul(A_sq, A)
-    #print(A_cu)
-
     """Test N_actual_overlaps"""
     #bs1 = np.packbits(np.array([1,1,1,0,0,0]))
     #bs2 = np.packbits(np.array([1,0,1,0,1,0]))
@@ -263,10 +273,6 @@ if __name__ == "__main__":
 
     """N overlaps random test"""
     #N_overlaps_rand_test(31, 1000000)
-
-    """possible_sccs_bf test"""
-    #p_arr = np.array([0.544343, 0.5, 0.9, 0.9])
-    #print(possible_sccs_bf(4, p_arr))
 
     """Test SCC sat"""
     #scc_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.333333, 0.333333, 0.33333])) #Example of a test case that passes
