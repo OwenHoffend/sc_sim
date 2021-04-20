@@ -97,6 +97,36 @@ def bs_scc(bsx, bsy, bs_len=None):
     else:
         return (p_actual - p_uncorr) / (p_uncorr - np.maximum(px + py - 1, 0))
 
+def bs_zce(bsx, bsy, bs_len):
+    px = bs_mean(bsx, bs_len=bs_len)
+    py = bs_mean(bsy, bs_len=bs_len)
+    if px in (0, 1) or py in (0, 1):
+        #raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
+        return None
+
+    p_uncorr  = px * py
+    p_actual  = bs_mean(np.bitwise_and(bsx, bsy), bs_len=bs_len)
+
+    delta0 = np.floor(p_uncorr * bs_len + 0.5)/bs_len - p_uncorr
+    delta  = p_actual - p_uncorr
+    return delta/np.abs(delta) * (np.abs(delta) - np.abs(delta0))
+
+def bs_szce(bsx, bsy, bs_len):
+    px = bs_mean(bsx, bs_len=bs_len)
+    py = bs_mean(bsy, bs_len=bs_len)
+    if px in (0, 1) or py in (0, 1):
+        #raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
+        return None
+
+    p_uncorr  = px * py
+    p_actual  = bs_mean(np.bitwise_and(bsx, bsy), bs_len=bs_len)
+    delta0 = np.floor(p_uncorr * bs_len + 0.5)/bs_len - p_uncorr
+    delta  = p_actual - p_uncorr
+    if p_actual > p_uncorr:
+        return (np.abs(delta) - np.abs(delta0)) / (np.abs(np.minimum(px, py) - p_uncorr) - np.abs(delta0))
+    else:
+        return (np.abs(delta0) - np.abs(delta)) / (np.abs(p_uncorr - np.maximum(px + py - 1, 0)) - np.abs(delta0))
+
 def get_corr_mat(bs_arr, bs_len=None):
     """Returns a correlation matrix representing the measured scc values of the given bitstream array"""
     n = len(bs_arr)

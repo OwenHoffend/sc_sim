@@ -256,6 +256,25 @@ def mux_p5(x, y):
             z[:, i] = y[:, i]
     return z
 
+def plot_alignments(Nx, Ny, N, fn):
+    Mx = np.minimum(Nx, Ny)
+    My = np.maximum(Nx, Ny)
+    basex = np.array([1 if i < Mx else 0 for i in range(N)])
+    basey = np.array([1 if i < My else 0 for i in reversed(range(N))])
+    results = []
+    while True:
+        results.append(fn(np.packbits(basex), np.packbits(basey), N))
+        if basey[0] != 0:
+            break
+        basey = np.roll(basey, -1)
+
+    x = list(range(len(results)))
+    plt.plot(x, results, marker='o')
+    plt.xlabel("Alignments")
+    plt.ylabel("SZCE Value")
+    plt.title("SZCE for all Px=21/32 and Py=22/32")
+    plt.grid()
+    plt.show()
 
 if __name__ == "__main__":
     #plot_img_conv_mse("./img/lena256.png")
@@ -268,4 +287,6 @@ if __name__ == "__main__":
 
     #plot_scc_sat_n3_3d([16, 32, 64], 0.6666666667)
     #plot_num_scc_combs([16, 24, 32])
-    scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), mux_p5, "MUX Gate") 
+    #scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), mux_p5, "MUX Gate") 
+
+    plot_alignments(21, 22, 32, bs.bs_szce)
