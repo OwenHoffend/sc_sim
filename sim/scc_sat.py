@@ -1,7 +1,7 @@
 #Simulations for the SCC satisfiability problem
 
 import numpy as np
-import sim.bitstreams as bs
+import bitstreams as bs
 import itertools
 import random
 from scipy import special
@@ -10,13 +10,11 @@ def bin_array(num, m):
     """Convert a positive integer num into an m-bit bit vector"""
     return np.array(list(np.binary_repr(num).zfill(m))).astype(np.int8)
 
-def num_possible_sccs_eq(N, n, p_arr):
-    """Compute the number of possible sccs via the candidate equation"""
-    res = 1
-    N_arr = p_arr * N
-    for Ni in N_arr:
-        res *= special.binom(N, Ni)
-    return res / np.math.factorial(N)
+def num_possible_sccs(N, p1, p2):
+    """Compute the number of possible sccs via the overlap-shift equation"""
+    nmax = N * np.maximum(p1, p2)
+    nmin = N * np.minimum(p1, p2)
+    return (N + 1) - nmax - np.maximum(N - nmax - nmin, 0)
 
 def Mij(Ni, Nj, c, N):
     No_max = np.minimum(Ni, Nj)
@@ -29,7 +27,7 @@ def Mij(Ni, Nj, c, N):
     else:
         return c * (PiNj - No_min) + PiNj
 
-def scc_sat(N, n, c_mat, p_arr, q_err_thresh=1e-6, m_err_thresh=1e-6, for_gen=False, print_stat=True, is_mc=False):
+def corr_sat(N, n, c_mat, p_arr, q_err_thresh=1e-4, m_err_thresh=1e-4, for_gen=False, print_stat=True, is_mc=False, use_zscc=False):
     """This is the primary SCC satisfaction function"""
     
     #Quantization error check (O(n))
@@ -47,23 +45,42 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=1e-6, m_err_thresh=1e-6, for_gen=Fa
             No_max = np.minimum(Ni, Nj)
             No_min = np.maximum(Ni + Nj - N, 0)
             PiNj = (Ni / N) * Nj
-            cond = c_mat[i][j] * (No_max - PiNj)
-            if cond > 0:
-                m = cond + PiNj
+            c = c_mat[i][j]
+            if use_zscc:
+                delta0 = (np.floor(PiNj + 0.5) - PiNj)/N
+                if c > 0:
+                    m = c * np.abs(No_max - PiNj) - (N * (c-1) * np.abs(delta0)) + PiNj
+                else:
+                    m = c * np.abs(No_min - PiNj) - (N * (c+1) * np.abs(delta0)) + PiNj
             else:
-                m =  c_mat[i][j] * (PiNj - No_min) + PiNj
+                if c > 0:
+                    m = c * (No_max - PiNj) + PiNj
+                else:
+                    m =  c * (PiNj - No_min) + PiNj
             rm = np.round(m)
             if (not (No_min <= rm <= No_max)):
                 if print_stat:
                     print("SCC SAT FAIL: n=2 bounds check failed")
                 return False
-            if (np.abs(rm - m) > m_err_thresh): #Non-integer overlap count
+            if (np.abs(rm - m) > m_err_thresh): #Non-integer overlap counter
                 if print_stat:
                     print("SCC SAT FAIL: n=2 integer check failed")
                 return False
             Dij[i][j] = Ni + Nj - 2*rm
 
-    #n>2 SCC satisfiability check - could perhaps use a matrix multiplication method here too
+    #n>2 SCC satisfiability check
+    #Magnitude check
+    dsum = np.sum(Dij)
+    if n % 2 == 0:
+        dmax = N*((n/2) ** 2)
+    else:
+        dmax = N*((n**2) - 1)/4
+    if dsum > dmax:
+        if print_stat:
+            print("SCC SAT FAIL: n>2 magnitude check failed")
+        return False
+
+    #Evenness check
     for i in range(n):
         for j in range(i): # i > j
             for k in range(j): # j > k 
@@ -72,10 +89,6 @@ def scc_sat(N, n, c_mat, p_arr, q_err_thresh=1e-6, m_err_thresh=1e-6, for_gen=Fa
                     if Ds % 2 == 1:
                         if print_stat: 
                             print("SCC SAT FAIL: n>2 evenness check failed")
-                        return False
-                    if Ds > 2 * N:
-                        if print_stat:
-                            print("SCC SAT FAIL: n>2 magnitude check failed")
                         return False
 
     if is_mc: #FIXME
@@ -110,7 +123,7 @@ def gen_multi_correlated(N, n, c_mat, p_arr, verify=False, is_mc=False, pack_out
     """Generate a set of bitstreams that are correlated according to the supplied correlation matrix"""
 
     #Test if the desired parameters are satisfiable
-    sat_result = scc_sat(N, n, c_mat, p_arr, for_gen=True, is_mc=is_mc, print_stat=print_stat)
+    sat_result = corr_sat(N, n, c_mat, p_arr, for_gen=True, is_mc=is_mc, print_stat=print_stat)
     if not sat_result:
         if print_stat:
             print("GEN_MULTI_CORRELATED FAILED: SCC matrix not satisfiable")
@@ -204,9 +217,9 @@ def N_overlaps_sweep_test(max_N):
                 return
     print("PASSED")
 
-def scc_sat_rand_test(max_n, max_N, iters):
-    """Sweep through a set of random valid bit configurations, and verify that scc_sat reports true for all of them"""
-    print("Total scc_sat random iters will be {}".format(iters))
+def corr_sat_rand_test(max_n, max_N, iters, use_zscc=False):
+    """Sweep through a set of random valid bit configurations, and verify that corr_sat reports true for all of them"""
+    print("Total corr_sat random iters will be {}".format(iters))
     for i in range(iters):
         n = max_n #np.random.randint(1, max_n+1)
         N = max_N #np.random.randint(1, max_N+1)
@@ -215,8 +228,9 @@ def scc_sat_rand_test(max_n, max_N, iters):
         p_arr = np.array([bs.bs_mean(s, bs_len=N) for s in bs_arr])
         if np.any(p_arr == 1.0) or np.any(p_arr == 0.0): #Filter out streams with undefined sccs wrt the others
             continue
-        c_mat = bs.get_corr_mat(bs_arr, bs_len=N)
-        if not scc_sat(N, n, c_mat, p_arr):
+        c_mat = bs.get_corr_mat(bs_arr, bs_len=N, use_zscc=use_zscc)
+        print(c_mat)
+        if not corr_sat(N, n, c_mat, p_arr, use_zscc=use_zscc):
             print("FAILED with: N={}, n={}, c_mat=\n{}, p_arr={}".format(N, n, c_mat, p_arr))
             return
         print("Iter {} with N={}, n={}, p_arr={} PASSED".format(i, N, n, p_arr))
@@ -224,7 +238,7 @@ def scc_sat_rand_test(max_n, max_N, iters):
 
 def gen_multi_corr_rand_test(max_n, max_N, iters):
     """Sweep through a set of random valid bit configurations, and verify that the reconstruction scc matrix matches the original"""
-    print("Total scc_sat random iters will be {}".format(iters))
+    print("Total corr_sat random iters will be {}".format(iters))
     for i in range(iters):
         n = np.random.randint(1, max_n+1)
         N = np.random.randint(1, max_N+1)
@@ -275,15 +289,22 @@ if __name__ == "__main__":
     #N_overlaps_rand_test(31, 1000000)
 
     """Test SCC sat"""
-    #scc_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.333333, 0.333333, 0.33333])) #Example of a test case that passes
-    #scc_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.5, 0.5, 0.5])) #Example of a test case that passes n=2 but fails n>2
+    #corr_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.333333, 0.333333, 0.333333]), use_zscc=True) #Example of a test case that passes
+    #corr_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.5, 0.5, 0.5])) #Example of a test case that passes n=2 but fails n>2
     #c_mat = np.array([
     #    [0, 0, 0],
     #    [0.25, 0, 0],
     #    [-0.25, -1, 0]
     #])
-    #scc_sat(6, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333])) #Example of a condition that passes using a correlation matrix
-    #scc_sat_rand_test(10, 128, 1000000)
+    #corr_sat(6, 3, c_mat, np.array([0.66666667, 0.66666667, 0.3333333])) #Example of a condition that passes using a correlation matrix
+    corr_sat_rand_test(10, 128, 1000000, use_zscc=True)
+
+    """A ZSCC test"""
+    bs2 = np.packbits(np.array([0,0,0,0,1,0]))
+    bs1 = np.packbits(np.array([1,1,1,1,1,0]))
+    bs3 = np.packbits(np.array([0,0,1,1,1,1]))
+    c_mat = bs.get_corr_mat([bs1, bs2, bs3], bs_len=6, use_zscc=True)
+    corr_sat(6, 3, c_mat, np.array([5/6, 1/6, 4/6]), use_zscc=True)
 
     """Test gen_multi_correlated"""
     #c_mat = np.array([
@@ -300,5 +321,6 @@ if __name__ == "__main__":
     #])
     #p_arr = np.array([0.875, 0.625, 0.375])
     #gen_multi_correlated(16, 3, c_mat, p_arr, verify=True)
-    gen_multi_corr_rand_test(8, 24, 10000)
+    #gen_multi_corr_rand_test(8, 24, 10000)
     #plot_mcc_change()
+

@@ -240,9 +240,9 @@ def scc_in_vs_out(N, p_arr1, p_arr2, sc_func, func_name, trials=10000):
     plt.plot(out_sccs, outcs[0])
     plt.plot(out_sccs, outcs[1])
     plt.plot(out_sccs, outcs[2])
-    plt.xlabel("Input MSCC value")
-    plt.ylabel("Output SCC values for 3 function outputs")
-    plt.title("{} SCC of outputs vs MSCC input. \n N={}, T={}, px={}, py={}".format(func_name, N, trials, p_arr1, p_arr2))
+    plt.xlabel("Input Mutual ZSCC value")
+    plt.ylabel("Output ZSCC values for 3 function outputs")
+    plt.title("{} ZSCC of outputs vs Mutual ZSCC input. \n N={}, T={}, px1={}, px2={}".format(func_name, N, trials, p_arr1, p_arr2))
     plt.grid()
     plt.show()
 
@@ -256,23 +256,30 @@ def mux_p5(x, y):
             z[:, i] = y[:, i]
     return z
 
-def plot_alignments(Nx, Ny, N, fn):
+def plot_alignments(Nx, Ny, N):
     Mx = np.minimum(Nx, Ny)
     My = np.maximum(Nx, Ny)
     basex = np.array([1 if i < Mx else 0 for i in range(N)])
     basey = np.array([1 if i < My else 0 for i in reversed(range(N))])
-    results = []
+    results_scc = []
+    results_zce = []
+    results_zscc = []
     while True:
-        results.append(fn(np.packbits(basex), np.packbits(basey), N))
+        results_scc.append(bs.bs_scc(np.packbits(basex), np.packbits(basey), N))
+        results_zce.append(bs.bs_zce(np.packbits(basex), np.packbits(basey), N))
+        results_zscc.append(bs.bs_zscc(np.packbits(basex), np.packbits(basey), N))
         if basey[0] != 0:
             break
         basey = np.roll(basey, -1)
 
-    x = list(range(len(results)))
-    plt.plot(x, results, marker='o')
+    x = list(range(len(results_zscc)))
+    plt.plot(x, results_scc, marker='o', label="SCC")
+    plt.plot(x, results_zce, marker='o', label="ZCE")
+    plt.plot(x, results_zscc, marker='o', label="ZSCC")
+    plt.legend()
     plt.xlabel("Alignments")
-    plt.ylabel("SZCE Value")
-    plt.title("SZCE for all Px=21/32 and Py=22/32")
+    plt.ylabel("Correlation Value")
+    plt.title("SCC, ZCE, and ZSCC for all Px=21/32 and Py=22/32")
     plt.grid()
     plt.show()
 
@@ -287,6 +294,7 @@ if __name__ == "__main__":
 
     #plot_scc_sat_n3_3d([16, 32, 64], 0.6666666667)
     #plot_num_scc_combs([16, 24, 32])
-    #scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), mux_p5, "MUX Gate") 
+    #scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), np.bitwise_and, "AND Gate") 
 
-    plot_alignments(21, 22, 32, bs.bs_szce)
+    #plot_alignments(21, 22, 32)
+    plot_alignments(1, 1, 6)

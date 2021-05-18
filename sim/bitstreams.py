@@ -111,7 +111,7 @@ def bs_zce(bsx, bsy, bs_len):
     delta  = p_actual - p_uncorr
     return delta/np.abs(delta) * (np.abs(delta) - np.abs(delta0))
 
-def bs_szce(bsx, bsy, bs_len):
+def bs_zscc(bsx, bsy, bs_len):
     px = bs_mean(bsx, bs_len=bs_len)
     py = bs_mean(bsy, bs_len=bs_len)
     if px in (0, 1) or py in (0, 1):
@@ -123,17 +123,30 @@ def bs_szce(bsx, bsy, bs_len):
     delta0 = np.floor(p_uncorr * bs_len + 0.5)/bs_len - p_uncorr
     delta  = p_actual - p_uncorr
     if p_actual > p_uncorr:
-        return (np.abs(delta) - np.abs(delta0)) / (np.abs(np.minimum(px, py) - p_uncorr) - np.abs(delta0))
+        numer = (delta - np.abs(delta0))
+        if numer == 0:
+            return 0 
+        denom = (np.abs(np.minimum(px, py) - p_uncorr) - np.abs(delta0))
+        assert denom != 0
+        return  numer / denom
     else:
-        return (np.abs(delta0) - np.abs(delta)) / (np.abs(p_uncorr - np.maximum(px + py - 1, 0)) - np.abs(delta0))
+        numer = (np.abs(delta0) + delta)
+        if numer == 0:
+            return 0
+        denom = (np.abs(p_uncorr - np.maximum(px + py - 1, 0)) - np.abs(delta0))
+        assert denom != 0
+        return numer / denom
 
-def get_corr_mat(bs_arr, bs_len=None):
+def get_corr_mat(bs_arr, bs_len=None, use_zscc=False):
     """Returns a correlation matrix representing the measured scc values of the given bitstream array"""
     n = len(bs_arr)
     Cij = np.zeros((n, n))
     for i in range(n):
         for j in range(i):
-            Cij[i][j] = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
+            if use_zscc:
+                Cij[i][j] = bs_zscc(bs_arr[i], bs_arr[j], bs_len=bs_len)
+            else:
+                Cij[i][j] = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
     return Cij
 
 def mc_mat(c, n):
@@ -178,15 +191,30 @@ if __name__ == "__main__":
     """Test forcing SCC to various values"""
     #bs1 = np.packbits(np.array([0,0,1,1,1,0]))
     #bs2 = np.packbits(np.array([1,1,1,0,0,0]))
-    #print(bs_scc(bs1, bs2, bs_len=6))
+    #bs3 = np.packbits(np.array([0,1,0,1,0,1]))
+    #bs4 = np.packbits(np.array([1,0,0,0,1,1]))
+    #print(bs_zscc(bs1, bs2, bs_len=8))
+    #print(bs_zscc(bs1, bs3, bs_len=8))
+    #print(bs_zscc(bs2, bs3, bs_len=8))
+    #print(bs_zscc(bs1, bs4, bs_len=8))
+    #print(bs_zscc(bs2, bs4, bs_len=8))
+    #print(bs_zscc(bs3, bs4, bs_len=8))
+
+    bs1 = np.packbits(np.array([1,1,1,1,1,0]))
+    bs2 = np.packbits(np.array([0,0,0,0,0,1]))
+    print(bs_zscc(bs1, bs2, bs_len=6))
+
+    #bs5 = np.packbits(np.array([0,1,1,0,0,0,0,1,1,0]))
+    #bs6 = np.packbits(np.array([1,0,0,1,0,0,1,0,0,1]))
+    #print(bs_scc(bs5, bs6, bs_len=10))
 
     """Test mutually mc_scc"""
-    bs1 = np.packbits(np.array([1,0,1,0,1,1]))
-    bs2 = np.packbits(np.array([1,1,0,0,1,1]))
-    bs3 = np.packbits(np.array([0,0,1,1,0,0]))
-    bs_arr = [bs1, bs2, bs3]
-    print(get_corr_mat(bs_arr, bs_len=6))
-    print(mc_scc(bs_arr, bs_len=6))
+    #bs1 = np.packbits(np.array([1,0,1,0,1,1]))
+    #bs2 = np.packbits(np.array([1,1,0,0,1,1]))
+    #bs3 = np.packbits(np.array([0,0,1,1,0,0]))
+    #bs_arr = [bs1, bs2, bs3]
+    #print(get_corr_mat(bs_arr, bs_len=6))
+    #print(mc_scc(bs_arr, bs_len=6))
 
     """Test mutual correlation generation"""
     #print(mc_mat(-1, 3))
