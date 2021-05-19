@@ -138,12 +138,12 @@ def plot_output_vs_input_3d(sc_func, correct, points=20, samples=20, x_bp=False,
     plt.show()
 
 #plotting functions related to scc satisfaction
-def plot_scc_sat_n3_3d(Ns, c):
+def plot_scc_sat_n3_3d(Ns, c, use_zscc=False):
     """Plot scc satisfaction for n=3 for a range of probability values"""
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     #Get ranges without 0.0 or 1.0 probabilities
-    colors = ['red', 'green', 'blue']
+    colors = ['blue', 'red', 'green']
     c_mat = bs.mc_mat(c, 3)
     uniques = {}
     for i, N in enumerate(Ns):
@@ -155,7 +155,7 @@ def plot_scc_sat_n3_3d(Ns, c):
                 for z in r:
                     #if "x{}y{}z{}".format(x,y,z) in uniques.keys():
                     #    continue
-                    if ss.scc_sat(N, 3, c_mat, np.array([x, y, z]), print_stat=False):
+                    if ss.corr_sat(N, 3, c_mat, np.array([x, y, z]), print_stat=False, use_zscc=use_zscc):
                         xs.append(x)
                         ys.append(y)
                         zs.append(z)
@@ -188,7 +188,7 @@ def plot_num_scc_combs(Ns):
             for x in r:
                 for y in r:
                     for z in r:
-                        if ss.scc_sat(N, 3, c_mat, np.array([x, y, z]), print_stat=False):
+                        if ss.corr_sat(N, 3, c_mat, np.array([x, y, z]), print_stat=False):
                             hist_sccs.append(c)
         plt.hist(hist_sccs, 50, alpha=0.75, color=colors[i], label="N={}".format(N))
     plt.yscale('log', nonposy='clip')
@@ -208,12 +208,12 @@ def scc_in_vs_out(N, p_arr1, p_arr2, sc_func, func_name, trials=10000):
     outcs = [[] for _ in range(3)]
     for c in sccs:
         c_mat = bs.mc_mat(c, 3)
-        g1 = ss.gen_multi_correlated(N, 3, c_mat, p_arr1, is_mc=True, pack_output=False, print_stat=False)
+        g1 = ss.gen_multi_correlated(N, 3, c_mat, p_arr1, pack_output=False, print_stat=False)
         if not g1:
             continue
         bs_arr1 = g1[1]
 
-        g2 = ss.gen_multi_correlated(N, 3, c_mat, p_arr2, is_mc=True, pack_output=False, print_stat=False)
+        g2 = ss.gen_multi_correlated(N, 3, c_mat, p_arr2, pack_output=False, print_stat=False)
         if not g2:
             continue
         bs_arr2 = g2[1]
@@ -292,9 +292,9 @@ if __name__ == "__main__":
     #    y_bp=True
     #)
 
-    #plot_scc_sat_n3_3d([16, 32, 64], 0.6666666667)
+    plot_scc_sat_n3_3d([16, 32])
     #plot_num_scc_combs([16, 24, 32])
     #scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), np.bitwise_and, "AND Gate") 
 
     #plot_alignments(21, 22, 32)
-    plot_alignments(1, 1, 6)
+    #plot_alignments(1, 1, 6)

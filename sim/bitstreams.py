@@ -122,18 +122,15 @@ def bs_zscc(bsx, bsy, bs_len):
     p_actual  = bs_mean(np.bitwise_and(bsx, bsy), bs_len=bs_len)
     delta0 = np.floor(p_uncorr * bs_len + 0.5)/bs_len - p_uncorr
     delta  = p_actual - p_uncorr
-    if p_actual > p_uncorr:
-        numer = (delta - np.abs(delta0))
-        if numer == 0:
-            return 0 
-        denom = (np.abs(np.minimum(px, py) - p_uncorr) - np.abs(delta0))
+    numer = (delta - delta0)
+    if numer == 0:
+        return 0
+    if p_actual > p_uncorr + delta0:
+        denom = (np.minimum(px, py) - p_uncorr - delta0)
         assert denom != 0
         return  numer / denom
     else:
-        numer = (np.abs(delta0) + delta)
-        if numer == 0:
-            return 0
-        denom = (np.abs(p_uncorr - np.maximum(px + py - 1, 0)) - np.abs(delta0))
+        denom = (p_uncorr - np.maximum(px + py - 1, 0) + delta0)
         assert denom != 0
         return numer / denom
 
