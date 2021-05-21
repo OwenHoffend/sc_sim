@@ -116,7 +116,7 @@ def bs_zscc(bsx, bsy, bs_len):
     py = bs_mean(bsy, bs_len=bs_len)
     if px in (0, 1) or py in (0, 1):
         #raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
-        return None
+        return 1 
 
     p_uncorr  = px * py
     p_actual  = bs_mean(np.bitwise_and(bsx, bsy), bs_len=bs_len)
@@ -151,9 +151,9 @@ def mc_mat(c, n):
     m = np.ones((n, n)) * c
     return np.tril(m, -1)
 
-def mc_scc(bs_arr, bs_len=None):
+def mc_scc(bs_arr, bs_len=None, use_zscc=False):
     """Test if an array of bitstreams are mutually correlated"""
-    Cij = get_corr_mat(bs_arr, bs_len=bs_len)
+    Cij = get_corr_mat(bs_arr, bs_len=bs_len, use_zscc=use_zscc)
     c = Cij[0][1]
     return np.all((Cij == c) | (Cij == 0))
     
@@ -174,6 +174,11 @@ def gen_correlated(scc, n, p1, p2, bs_gen_func):
     scc0_weighted = np.bitwise_and(np.bitwise_not(bs_mag), bs2_scc0)
     scc1_weighted = np.bitwise_and(bs_mag, bs2_scc1)
     return bs1, np.bitwise_or(scc0_weighted, scc1_weighted)
+
+def mut_corr_err(mc, c_mat):
+    n, _ = c_mat.shape
+    mc_mat = np.tril(np.ones_like(c_mat) * mc, -1)
+    return np.sum(np.abs(mc_mat - c_mat)) / n
 
 if __name__ == "__main__":
     """Test bs_bp_lfsr"""
@@ -197,20 +202,20 @@ if __name__ == "__main__":
     #print(bs_zscc(bs2, bs4, bs_len=8))
     #print(bs_zscc(bs3, bs4, bs_len=8))
 
-    bs1 = np.packbits(np.array([1,1,1,1,1,0]))
-    bs2 = np.packbits(np.array([0,0,0,0,0,1]))
-    print(bs_zscc(bs1, bs2, bs_len=6))
+    #bs1 = np.packbits(np.array([1,1,1,1,1,0]))
+    #bs2 = np.packbits(np.array([0,0,0,0,0,1]))
+    #print(bs_zscc(bs1, bs2, bs_len=6))
 
     #bs5 = np.packbits(np.array([0,1,1,0,0,0,0,1,1,0]))
     #bs6 = np.packbits(np.array([1,0,0,1,0,0,1,0,0,1]))
     #print(bs_scc(bs5, bs6, bs_len=10))
 
     """Test mutually mc_scc"""
-    #bs1 = np.packbits(np.array([1,0,1,0,1,1]))
-    #bs2 = np.packbits(np.array([1,1,0,0,1,1]))
-    #bs3 = np.packbits(np.array([0,0,1,1,0,0]))
-    #bs_arr = [bs1, bs2, bs3]
-    #print(get_corr_mat(bs_arr, bs_len=6))
+    bs1 = np.packbits(np.array([1,0,0,0,0,0]))
+    bs2 = np.packbits(np.array([1,1,0,0,1,1]))
+    bs3 = np.packbits(np.array([1,1,0,0,0,0]))
+    bs_arr = [bs1, bs2, bs3]
+    print(get_corr_mat(bs_arr, bs_len=6, use_zscc=True))
     #print(mc_scc(bs_arr, bs_len=6))
 
     """Test mutual correlation generation"""
@@ -220,3 +225,11 @@ if __name__ == "__main__":
     #bs_arr = [rng.bs_lfsr(16, 0.5, keep_rng=False) for _ in range(n)]
     #Cij = get_corr_mat(bs_arr)
     #print(Cij)
+
+    """Test mut_corr_err"""
+    #c_mat = np.array([
+    #    [0, 0, 0],
+    #    [-1, 0, 0],
+    #    [-1, -1, 0]
+    #])
+    #print(mut_corr_err(1, c_mat))

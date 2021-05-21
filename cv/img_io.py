@@ -52,8 +52,8 @@ def save_img(img_arr, path):
 
 def disp_img(img_arr):
     """Display an image from a numpy ndarray (height, width, channels)"""
-    image = Image.fromarray(img_arr)
-    image.show()
+    img = Image.fromarray(img_arr)
+    img.show()
 
 if __name__ == "__main__":
     """Basic test of image loading, manipulation, and storing"""

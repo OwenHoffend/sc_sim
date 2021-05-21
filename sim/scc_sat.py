@@ -53,6 +53,10 @@ def corr_sat(N, n, c_mat, p_arr, q_err_thresh=1e-4, m_err_thresh=1e-4, for_gen=F
                     m = (1-c)*(N*delta0 + PiNj) + c*No_max
                 else:
                     m = (1+c)*(N*delta0 + PiNj) - c*No_min
+                if PiNj + N*delta0 == m and c != 0:
+                    if print_stat:
+                        print("SCC SAT FAIL: n=2 check failed")
+                    return False
             else:
                 if c > 0:
                     m = c * (No_max - PiNj) + PiNj
@@ -341,12 +345,12 @@ if __name__ == "__main__":
     """Test SCC sat"""
     #corr_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.333333, 0.333333, 0.333333]), use_zscc=True) #Example of a test case that passes
     #corr_sat(6, 3, bs.mc_mat(-1, 3), np.array([0.5, 0.5, 0.5])) #Example of a test case that passes n=2 but fails n>2
-    c_mat = np.array([
-        [0, 0, 0],
-        [0.57367311, 0, 0],
-        [-0.52377613, 1, 0]
-    ])
-    corr_sat(6, 3, c_mat, np.array([0.16666667, 0.66666667, 0.33333333]), use_zscc=True) #Example of a condition that passes using a correlation matrix
+    #c_mat = np.array([
+    #    [0, 0, 0],
+    #    [0.57367311, 0, 0],
+    #    [-0.52377613, 1, 0]
+    #])
+    #corr_sat(6, 3, c_mat, np.array([0.16666667, 0.66666667, 0.33333333]), use_zscc=True) #Example of a condition that passes using a correlation matrix
     #corr_sat_rand_test(5, 128, 1000000, use_zscc=True)
 
     """A ZSCC test"""
@@ -372,7 +376,7 @@ if __name__ == "__main__":
     #p_arr = np.array([0.875, 0.625, 0.375])
     #gen_multi_correlated(16, 3, c_mat, p_arr, verify=True)
 
-    #gen_multi_corr_rand_test(6, 10, 100000, use_zscc=True, test_sat=True)
+    gen_multi_corr_rand_test(6, 10, 1000000, use_zscc=True, test_sat=True)
     #from multiprocessing import Pool
     #with Pool(12) as p:
     #    p.map(f, [x for x in range(12)])

@@ -5,6 +5,7 @@ import numpy as np
 import cv.img_io as img_io
 import sim.bitstreams as bs
 import sim.scc_sat as ss
+import sim.circuits as cir
 
 def plot_img_conv_mse(img_path):
     """Plot the error due to converting to SC bitstreams and back
@@ -246,16 +247,6 @@ def scc_in_vs_out(N, p_arr1, p_arr2, sc_func, func_name, trials=10000):
     plt.grid()
     plt.show()
 
-def mux_p5(x, y):
-    z = np.zeros_like(x)
-    for i in range(x.shape[1]):
-        r = np.random.rand()
-        if r > 0.5:
-            z[:, i] = x[:, i]
-        else:
-            z[:, i] = y[:, i]
-    return z
-
 def plot_alignments(Nx, Ny, N):
     Mx = np.minimum(Nx, Ny)
     My = np.maximum(Nx, Ny)
@@ -283,6 +274,22 @@ def plot_alignments(Nx, Ny, N):
     plt.grid()
     plt.show()
 
+def plot_corr_err(iters):
+    Nvals = list(range(100, 20000, 100))
+    res = [0 for _ in range(len(Nvals))]
+    for idx, N in enumerate(Nvals):
+        for i in range(iters):
+            p_arr = [np.random.random() for _ in range(9)]
+            c_mat = cir.robert_cross_3x3_to_2x2(p_arr, N)
+            err = bs.mut_corr_err(1, c_mat)
+            res[idx] += err 
+        res[idx] /= iters
+    plt.plot(Nvals, res)
+    plt.title("Avg mutual corr err vs bitstream length. \n Random probability values")
+    plt.ylabel("Avg mutual corr err")
+    plt.xlabel("Bitstream length")
+    plt.show()
+
 if __name__ == "__main__":
     #plot_img_conv_mse("./img/lena256.png")
     #rng = bs.SC_RNG()
@@ -292,9 +299,11 @@ if __name__ == "__main__":
     #    y_bp=True
     #)
 
-    plot_scc_sat_n3_3d([16, 32])
+    #plot_scc_sat_n3_3d([16, 32])
     #plot_num_scc_combs([16, 24, 32])
     #scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), np.bitwise_and, "AND Gate") 
 
     #plot_alignments(21, 22, 32)
-    #plot_alignments(1, 1, 6)
+    plot_alignments(1, 4, 6)
+
+    #plot_corr_err(20)
