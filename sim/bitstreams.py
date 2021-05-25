@@ -51,9 +51,14 @@ class SC_RNG:
         return np.packbits(bp | (lfsr_run & np.full((1, n), msb_mask) == msb_mask))
 
     def bs_bp_lfsr(self, n, bp, keep_rng=True, inv=False):
-        """Generate a bipolar stochastic bitstream via the bs_lfsr or bs_uniform method. Can be correlated"""
+        """Generate a bipolar stochastic bitstream via the bs_lfsr method. Can be correlated"""
         up = (bp + 1.0) / 2.0
         return self.bs_lfsr(n, up, keep_rng=keep_rng, inv=inv)
+
+    def bs_bp_uniform(self, n, bp, keep_rng=True, inv=False):
+        """Generate a bipolar stochastic bitstream via the bs_uniform method."""
+        up = (bp + 1.0) / 2.0
+        return self.bs_uniform(n, up, keep_rng=keep_rng, inv=inv)
 
 def bit_vec_to_int(vec):
     """Utility function for converting a np array bit vector to an integer"""
@@ -178,7 +183,7 @@ def gen_correlated(scc, n, p1, p2, bs_gen_func):
 def mut_corr_err(mc, c_mat):
     n, _ = c_mat.shape
     mc_mat = np.tril(np.ones_like(c_mat) * mc, -1)
-    return np.sum(np.abs(mc_mat - c_mat)) / n
+    return np.sum(np.abs(mc_mat - c_mat)) / (n * (n-1) / 2)
 
 if __name__ == "__main__":
     """Test bs_bp_lfsr"""

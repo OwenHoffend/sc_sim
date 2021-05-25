@@ -274,18 +274,30 @@ def plot_alignments(Nx, Ny, N):
     plt.grid()
     plt.show()
 
-def plot_corr_err(iters):
-    Nvals = list(range(100, 20000, 100))
+def plot_corr_err(iters, p_arr, func, Nvals):
+    rand_arr = np.random.randint(0, high=256, size=(28,28)) #For comparing against random
     res = [0 for _ in range(len(Nvals))]
+    res2 = [0 for _ in range(len(Nvals))]
     for idx, N in enumerate(Nvals):
+        print("Progress: N={}".format(N))
         for i in range(iters):
-            p_arr = [np.random.random() for _ in range(9)]
-            c_mat = cir.robert_cross_3x3_to_2x2(p_arr, N)
+            print("Iter: {}".format(i))
+            c_mat = func(p_arr, N)
+            c_mat2 = func(rand_arr, N)
+            print(c_mat)
+            print(c_mat2)
             err = bs.mut_corr_err(1, c_mat)
-            res[idx] += err 
+            err2 = bs.mut_corr_err(1, c_mat2)
+            res[idx] += err
+            res2[idx] += err2
         res[idx] /= iters
-    plt.plot(Nvals, res)
-    plt.title("Avg mutual corr err vs bitstream length. \n Random probability values")
+        res2[idx] /= iters
+    print(res)
+    print(res2)
+    plt.plot(Nvals, res, label="Real image")
+    plt.plot(Nvals, res2, label="Random pixels")
+    plt.legend()
+    plt.title("Avg mutual corr err vs bitstream length.")
     plt.ylabel("Avg mutual corr err")
     plt.xlabel("Bitstream length")
     plt.show()
@@ -304,6 +316,19 @@ if __name__ == "__main__":
     #scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), np.bitwise_and, "AND Gate") 
 
     #plot_alignments(21, 22, 32)
-    plot_alignments(1, 4, 6)
+    #plot_alignments(1, 4, 6)
 
-    #plot_corr_err(20)
+    """Correlation preservation analysis"""
+    #p_arr = [np.random.random() for _ in range(9)]
+    #Nvals = list(range(100, 20000, 100))
+    #plot_corr_err(20, p_arr, cir.robert_cross_3x3_to_2x2, Nvals)
+
+    p_arr = img_io.load_img("./img/lena_s2.jpg", gs=True)
+    Nvals = [8*x for x in range(2, 28, 2)]
+    kernel = np.array([
+        [0.1, 0.1, 0.1],
+        [0.1, 0.1, 0.1],
+        [0.1, 0.1, 0.1]
+    ])
+    func = lambda x, y: cir.cnn_kernel_3x3_up(x, kernel, y)
+    plot_corr_err(2, p_arr, func, Nvals)

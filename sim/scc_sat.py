@@ -1,8 +1,7 @@
 #Simulations for the SCC satisfiability problem
 
-from multiprocessing import Value
 import numpy as np
-import bitstreams as bs
+import sim.bitstreams as bs
 import itertools
 import random
 from scipy import special

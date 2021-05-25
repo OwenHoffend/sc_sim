@@ -25,7 +25,7 @@ def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, scale=True)
                 bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]), keep_rng=correlated)
     return bs
 
-def bs_to_img(bs, bs_mean_func):
+def bs_to_img(bs, bs_mean_func, scaling=1):
     """Convert a stochastic bitstream image back into an image"""
     height, width, npb = bs.shape
     img = np.zeros((height, width), dtype=np.uint8)
@@ -33,7 +33,7 @@ def bs_to_img(bs, bs_mean_func):
         for j in range(width):
             #Default pixel-value encoding is p * 255, might want to try others
             img[i][j] = np.rint(bs_mean_func(bs[i][j]) * 255).astype(np.uint8)
-    return img
+    return img * scaling
 
 def img_mse(img1, img2):
     """Compute the MSE between two images.
