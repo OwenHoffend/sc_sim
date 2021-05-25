@@ -4,6 +4,10 @@ from sys import path
 from os.path import dirname as dir
 path.append(dir(path[0]))
 import cv.img_io as img_io
+import torch
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+cpu = torch.device("cpu")
 
 def mux_p(x, y, p):
     x_un = np.unpackbits(x)
@@ -13,6 +17,19 @@ def mux_p(x, y, p):
         r = np.random.rand()
         z[i] = x_un[i] if r > p else y_un[i]
     return np.packbits(z)
+
+def mux_p_cuda(x, y, p):
+    global mask 
+    mask = torch.cuda.ByteTensor([2 ** x for x in range(8)])
+
+    xs = x.shape[0]
+    ys = y.shape[0]
+    assert xs == ys
+    rands = torch.cuda.FloatTensor(xs << 3).uniform_() > p
+    rands = torch.sum(rands.view(xs, 8) * mask, 1)
+    top = torch.bitwise_and(x, rands)
+    bot = torch.bitwise_and(y, torch.bitwise_not(rands))
+    return torch.bitwise_or(top, bot)
 
 def robert_cross(x11, x12, x21, x22):
     xor1 = np.bitwise_xor(x11, x22)
@@ -52,29 +69,34 @@ def cnn_kernel_3x3_up(img, kernel, N):
     h, w = img.shape
     rng = bs.SC_RNG()
     img_bs = img_io.img_to_bs(img, rng.bs_uniform, bs_len=N) #Correlated at +1
+    img_bs = torch.from_numpy(img_bs).to(device)
     rng.reset()
 
     kernel_bs = img_io.img_to_bs(kernel, rng.bs_uniform, bs_len=N, scale=False)
+    kernel_bs = torch.from_numpy(kernel_bs).to(device)
 
-    rc_mat = np.zeros((h-2, w-2, N>>3), dtype=np.uint8)
-    m = np.zeros((3, 3, N>>3), dtype=np.uint8) #intermediate variable
+    nb = N>>3
+    rc_mat = torch.cuda.ByteTensor(h-2, w-2, nb).fill_(0)
+    m = torch.cuda.ByteTensor(3, 3, nb).fill_(0)
+    z = torch.cuda.ByteTensor(nb).fill_(0)
     for i in range(h-2):
         for j in range(w-2):
             for k in range(3):
                 for l in range(3):
-                    m[k][l] = np.bitwise_and(img_bs[i + k][j + l], kernel_bs[k][l])
+                    m[k][l] = torch.bitwise_and(img_bs[i + k][j + l], kernel_bs[k][l])
             #mux sum tree
-            l1_1 = mux_p(m[0][0], m[0][1], 0.5)
-            l1_2 = mux_p(m[0][2], m[1][0], 0.5)
-            l1_3 = mux_p(m[1][1], m[1][2], 0.5)
-            l1_4 = mux_p(m[2][0], m[2][1], 0.5)
-            l2_1 = mux_p(l1_1, l1_2, 0.5)
-            l2_2 = mux_p(l1_3, l1_4, 0.5)
-            l3 = mux_p(l2_1, l2_2, 0.5) 
-            rc_mat[i][j] = mux_p(l3, mux_p(m[2][2], np.zeros_like(m[2][2]), 1.0/8.0), 1.0/9.0)
+            l1_1 = mux_p_cuda(m[0][0], m[0][1], 0.5)
+            l1_2 = mux_p_cuda(m[0][2], m[1][0], 0.5)
+            l1_3 = mux_p_cuda(m[1][1], m[1][2], 0.5)
+            l1_4 = mux_p_cuda(m[2][0], m[2][1], 0.5)
+            l2_1 = mux_p_cuda(l1_1, l1_2, 0.5)
+            l2_2 = mux_p_cuda(l1_3, l1_4, 0.5)
+            l3 = mux_p_cuda(l2_1, l2_2, 0.5)
+            rc_mat[i][j] = mux_p_cuda(l3, mux_p_cuda(m[2][2], z, 1.0/8.0), 1.0/9.0)
+    
+    #rc_mat = rc_mat.to(cpu)
     #img_io.disp_img(img_io.bs_to_img(rc_mat, bs.bs_mean, scaling=9))
-    rc_list = [rc_mat[i][j][:] for i in range(h-2) for j in range(w-2)]
-    return bs.get_corr_mat(rc_list, bs_len=N, use_zscc=True)
+    return bs.get_corr_mat_cuda(rc_mat.view((h-2)*(w-2), nb)).to(cpu).numpy()
 
 if __name__ == "__main__":
     """Test robert_cross_3x3_to_2x2"""
@@ -95,4 +117,13 @@ if __name__ == "__main__":
         [0.125,  0.25,  0.125 ],
         [0.0625, 0.125, 0.0625]
     ])
-    out_c_mat = cnn_kernel_3x3_up(img, kernel, 2048)
+
+    import time
+
+    t0 = time.time()
+    with torch.no_grad():
+        out_c_mat = cnn_kernel_3x3_up(img, kernel, 4096)
+    t1 = time.time()
+    total = t1-t0
+    print(total)
+    print(out_c_mat)

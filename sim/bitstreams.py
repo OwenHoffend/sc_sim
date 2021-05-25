@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from pylfsr import LFSR
 
 class SC_RNG:
@@ -79,6 +80,18 @@ def bs_mean(bs, bs_len=None):
     else:
         return np.mean(unp)
 
+def bs_count_cuda(bs):
+    """Using a well-known population count algorithm"""
+    global m1, m2, m4
+    m1 = torch.cuda.ByteTensor([0x55])
+    m2 = torch.cuda.ByteTensor([0x33])
+    m4 = torch.cuda.ByteTensor([0x0F])
+    b = (bs & m1) + (bs >> 1 & m1)
+    b = (b & m2) + (b >> 2 & m2)
+    b = (b & m4) + (b >> 4 & m4)
+    dim = 0 if len(b.shape) == 1 else 1
+    return torch.sum(b, dim)
+
 def bs_mean_bp(bs, bs_len=None):
     """Evaluate the bipolar probability value of a bitstream"""
     m = bs_mean(bs, bs_len=bs_len) #Unipolar mean
@@ -134,10 +147,31 @@ def bs_zscc(bsx, bsy, bs_len):
         denom = (np.minimum(px, py) - p_uncorr - delta0)
         assert denom != 0
         return  numer / denom
-    else:
-        denom = (p_uncorr - np.maximum(px + py - 1, 0) + delta0)
-        assert denom != 0
-        return numer / denom
+    denom = (p_uncorr - np.maximum(px + py - 1, 0) + delta0)
+    assert denom != 0
+    return numer / denom
+
+def bs_zscc_cuda(bsx, bsy, N):
+    """Single bitstream bsx is being compared to multiple bitstreams in bsy"""
+    px = bs_count_cuda(bsx) / N
+    py = bs_count_cuda(bsy) / N
+    if px in (0, 1) or 1 in py or 0 in py:
+        return 1 
+    p_uncorr = px * py
+    p_actual = bs_count_cuda(torch.bitwise_and(bsx, bsy)) / N
+    p_max = torch.min(px, py)
+    p_min = torch.max(px + py - 1, 0).values
+    delta0 = torch.floor(p_uncorr * N + 0.5)/N - p_uncorr
+    delta  = p_actual - p_uncorr
+    numer = (delta - delta0)
+    result = torch.cuda.FloatTensor(len(py)).fill_(0)
+    gt_denom = p_max - p_uncorr - delta0
+    gt_mask = numer > 0
+    lt_denom = p_uncorr - p_min + delta0 
+    lt_mask = numer < 0
+    result += (numer / gt_denom) * gt_mask
+    result += (numer / lt_denom) * lt_mask
+    return result
 
 def get_corr_mat(bs_arr, bs_len=None, use_zscc=False):
     """Returns a correlation matrix representing the measured scc values of the given bitstream array"""
@@ -149,6 +183,17 @@ def get_corr_mat(bs_arr, bs_len=None, use_zscc=False):
                 Cij[i][j] = bs_zscc(bs_arr[i], bs_arr[j], bs_len=bs_len)
             else:
                 Cij[i][j] = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
+    return Cij
+
+def get_corr_mat_cuda(bs_arr):
+    """
+    Use pytorch cuda to get zscc matrix.
+    Only supports bitstreams of length divisible by 8 for now
+    """
+    n, N = bs_arr.shape
+    Cij = torch.cuda.FloatTensor(n, n).fill_(0)
+    for i in range(1, n):
+            Cij[i][:i] = bs_zscc_cuda(bs_arr[i][:], bs_arr[:i][:], N<<3)
     return Cij
 
 def mc_mat(c, n):

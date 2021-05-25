@@ -324,11 +324,11 @@ if __name__ == "__main__":
     #plot_corr_err(20, p_arr, cir.robert_cross_3x3_to_2x2, Nvals)
 
     p_arr = img_io.load_img("./img/lena_s2.jpg", gs=True)
-    Nvals = [8*x for x in range(2, 28, 2)]
+    Nvals = [8*x for x in range(4, 500, 4)]
     kernel = np.array([
         [0.1, 0.1, 0.1],
         [0.1, 0.1, 0.1],
         [0.1, 0.1, 0.1]
     ])
     func = lambda x, y: cir.cnn_kernel_3x3_up(x, kernel, y)
-    plot_corr_err(2, p_arr, func, Nvals)
+    plot_corr_err(4, p_arr, func, Nvals)
