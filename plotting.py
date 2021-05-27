@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 import numpy as np
 import cv.img_io as img_io
+from cv.conv_filters import ConvFilters as cf
 import sim.bitstreams as bs
 import sim.scc_sat as ss
 import sim.circuits as cir
@@ -323,12 +324,9 @@ if __name__ == "__main__":
     #Nvals = list(range(100, 20000, 100))
     #plot_corr_err(20, p_arr, cir.robert_cross_3x3_to_2x2, Nvals)
 
-    p_arr = img_io.load_img("./img/lena_s2.jpg", gs=True)
-    Nvals = [8*x for x in range(4, 500, 4)]
-    kernel = np.array([
-        [0.1, 0.1, 0.1],
-        [0.1, 0.1, 0.1],
-        [0.1, 0.1, 0.1]
-    ])
-    func = lambda x, y: cir.cnn_kernel_3x3_up(x, kernel, y)
-    plot_corr_err(4, p_arr, func, Nvals)
+    p_arr = img_io.load_img("./img/lena_s3.jpg", gs=True)
+    Nvals = [256, 512, 1024, 2048, 4096] + [8*x for x in range(2048, 32768, 2048)]
+    #Nvals = [2 ** x for x in range(8, 19)]
+    kernel = np.array(cf.EDGE_DETECT_8)
+    func = lambda x, y: cir.cnn_kernel_3x3(x, kernel, y)
+    plot_corr_err(2, p_arr, func, Nvals)
