@@ -1,7 +1,7 @@
 #Simulations for the SCC satisfiability problem
 
 import numpy as np
-import sim.bitstreams as bs
+import bitstreams as bs
 import itertools
 import random
 from scipy import special
@@ -16,16 +16,21 @@ def num_possible_sccs(N, p1, p2):
     nmin = N * np.minimum(p1, p2)
     return (N + 1) - nmax - np.maximum(N - nmax - nmin, 0)
 
-def Mij(Ni, Nj, c, N):
+def Mij(Ni, Nj, c, N, use_zscc=False):
     No_max = np.minimum(Ni, Nj)
     No_min = np.maximum(Ni + Nj - N, 0)
-
     PiNj = (Ni / N) * Nj
-    cond = c * (No_max - PiNj)
-    if cond > 0:
-        return cond + PiNj
+    if use_zscc:
+        delta0 = (np.floor(PiNj + 0.5) - PiNj)/N
+        if c > 0:
+            return (1-c)*(N*delta0 + PiNj) + c*No_max
+        else:
+            return (1+c)*(N*delta0 + PiNj) - c*No_min
     else:
-        return c * (PiNj - No_min) + PiNj
+        if c > 0:
+            return c * (No_max - PiNj) + PiNj
+        else:
+            return c * (PiNj - No_min) + PiNj
 
 def corr_sat(N, n, c_mat, p_arr, q_err_thresh=1e-4, m_err_thresh=1e-4, for_gen=False, print_stat=True, use_zscc=False):
     """This is the primary SCC satisfaction function"""

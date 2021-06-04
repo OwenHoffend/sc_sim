@@ -166,11 +166,11 @@ def bs_zscc_cuda(bsx, bsy, N):
     numer = (delta - delta0)
     result = torch.cuda.FloatTensor(len(py)).fill_(0)
     gt_denom = p_max - p_uncorr - delta0
-    gt_mask = numer > 0
+    gt_mask = torch.bitwise_and(numer > 0, gt_denom != 0)
     lt_denom = p_uncorr - p_min + delta0 
-    lt_mask = numer < 0
-    result += (numer / gt_denom) * gt_mask
-    result += (numer / lt_denom) * lt_mask
+    lt_mask = torch.bitwise_and(numer < 0, lt_denom != 0)
+    result += (numer / (gt_denom + 1e-15)) * gt_mask
+    result += (numer / (lt_denom + 1e-15)) * lt_mask
     return result
 
 def get_corr_mat(bs_arr, bs_len=None, use_zscc=False):
@@ -261,10 +261,9 @@ if __name__ == "__main__":
     #print(bs_scc(bs5, bs6, bs_len=10))
 
     """Test mutually mc_scc"""
-    bs1 = np.packbits(np.array([1,0,0,0,0,0]))
-    bs2 = np.packbits(np.array([1,1,0,0,1,1]))
-    bs3 = np.packbits(np.array([1,1,0,0,0,0]))
-    bs_arr = [bs1, bs2, bs3]
+    bs1 = np.packbits(np.array([1,1,1,0,0,0]))
+    bs2 = np.packbits(np.array([1,1,0,1,1,0]))
+    bs_arr = [bs1, bs2]
     print(get_corr_mat(bs_arr, bs_len=6, use_zscc=True))
     #print(mc_scc(bs_arr, bs_len=6))
 

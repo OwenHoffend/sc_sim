@@ -276,7 +276,7 @@ def plot_alignments(Nx, Ny, N):
     plt.show()
 
 def plot_corr_err(iters, p_arr, func, Nvals):
-    rand_arr = np.random.randint(0, high=256, size=(28,28)) #For comparing against random
+    rand_arr = np.random.randint(1, high=255, size=(28,28)) #For comparing against random
     res = [0 for _ in range(len(Nvals))]
     res2 = [0 for _ in range(len(Nvals))]
     for idx, N in enumerate(Nvals):
@@ -325,8 +325,25 @@ if __name__ == "__main__":
     #plot_corr_err(20, p_arr, cir.robert_cross_3x3_to_2x2, Nvals)
 
     p_arr = img_io.load_img("./img/lena_s3.jpg", gs=True)
-    Nvals = [256, 512, 1024, 2048, 4096] + [8*x for x in range(2048, 32768, 2048)]
+    N = 131072
+    kernel = np.array(cf.BOX_BLUR)
+    c_mat = cir.cnn_kernel_3x3(p_arr, kernel, N)
+    rand_arr = np.random.randint(1, high=255, size=(28,28))
+    c_mat2 = cir.cnn_kernel_3x3(rand_arr, kernel, N)
+    
+
+    plt.hist(c_mat[np.tril_indices(c_mat.shape[0])], bins=50, label="Real Image Data")
+    plt.hist(c_mat2[np.tril_indices(c_mat2.shape[0])], bins=50, label="Random Image Data")
+    plt.xlabel("ZSCC")
+    plt.ylabel("Count")
+    plt.legend()
+    plt.title("EDGE_DETECT_4")
+    plt.show()
+
+    #Nvals = [8*x for x in range(2048, 5*2048, 2048)]
     #Nvals = [2 ** x for x in range(8, 19)]
-    kernel = np.array(cf.EDGE_DETECT_8)
-    func = lambda x, y: cir.cnn_kernel_3x3(x, kernel, y)
-    plot_corr_err(2, p_arr, func, Nvals)
+    #kernel = np.array(cf.SHARPEN)
+    #func = lambda x, y: cir.cnn_kernel_3x3(x, kernel, y)
+    #func = lambda x, y: cir.robert_cross_img(x, y)
+    #plot_corr_err(2, p_arr, func, Nvals)
+
