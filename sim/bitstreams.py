@@ -130,6 +130,7 @@ def bs_zce(bsx, bsy, bs_len):
     return delta/np.abs(delta) * (np.abs(delta) - np.abs(delta0))
 
 def bs_zscc(bsx, bsy, bs_len):
+    """Zeroed SCC"""
     px = bs_mean(bsx, bs_len=bs_len)
     py = bs_mean(bsy, bs_len=bs_len)
     if px in (0, 1) or py in (0, 1):
@@ -148,6 +149,27 @@ def bs_zscc(bsx, bsy, bs_len):
         assert denom != 0
         return  numer / denom
     denom = (p_uncorr - np.maximum(px + py - 1, 0) + delta0)
+    assert denom != 0
+    return numer / denom
+
+def bs_zscc_ovs(pi, pj, No, N):
+    """Compute zeroed SCC using an overlap count"""
+    if pi in (0, 1) or pj in (0, 1):
+        #raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
+        return 1 
+
+    p_uncorr  = pi * pj
+    p_actual  = No / N
+    delta0 = np.floor(p_uncorr * N + 0.5)/N - p_uncorr
+    delta  = p_actual - p_uncorr
+    numer = (delta - delta0)
+    if numer == 0:
+        return 0
+    if p_actual > p_uncorr + delta0:
+        denom = (np.minimum(pi, pj) - p_uncorr - delta0)
+        assert denom != 0
+        return  numer / denom
+    denom = (p_uncorr - np.maximum(pi + pj - 1, 0) + delta0)
     assert denom != 0
     return numer / denom
 
