@@ -74,7 +74,10 @@ def bs_bernoulli(n, p):
 def bs_mean(bs, bs_len=None):
     """Evaluate the probability value of a bitstream, taken as the mean value of the bitstream.
         For bitstreams that don't align to byte boundaries, use bs_len to supply the exact bitstream length."""
-    unp = np.unpackbits(bs)
+    try:
+        unp = np.unpackbits(bs)
+    except TypeError:
+        unp = bs
     if bs_len != None:
         return np.sum(unp) / bs_len 
     else:
@@ -195,7 +198,7 @@ def bs_zscc_cuda(bsx, bsy, N):
     result += (numer / (lt_denom + 1e-15)) * lt_mask
     return result
 
-def get_corr_mat(bs_arr, bs_len=None, use_zscc=False):
+def get_corr_mat(bs_arr, bs_len=None, use_zscc=False, use_cov=False):
     """Returns a correlation matrix representing the measured scc values of the given bitstream array"""
     n = len(bs_arr)
     Cij = np.zeros((n, n))
@@ -203,6 +206,11 @@ def get_corr_mat(bs_arr, bs_len=None, use_zscc=False):
         for j in range(i):
             if use_zscc:
                 Cij[i][j] = bs_zscc(bs_arr[i], bs_arr[j], bs_len=bs_len)
+            elif use_cov:
+                pi = bs_mean(bs_arr[i], bs_len=bs_len)
+                pj = bs_mean(bs_arr[j], bs_len=bs_len)
+                pij = bs_mean(np.bitwise_and(bs_arr[i], bs_arr[j]), bs_len=bs_len)
+                Cij[i][j] = pij - pi * pj
             else:
                 Cij[i][j] = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
     return Cij

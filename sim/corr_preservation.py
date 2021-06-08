@@ -14,6 +14,20 @@ def B_mat(n):
         B[i][:] = bin_array(i, n)
     return B
 
+def ptm_based_cov_mat(V, p_vec, N):
+    """Build a covariance matrix using a ptm vector V"""
+    n = np.log2(V.size).astype(np.uint32)
+    C = np.zeros((n, n))
+    Bn = B_mat(n)
+    for q in range(2 ** n):
+        c = np.zeros((n, n))
+        for i in range(n):
+            for j in range(j):
+                pij = Bn[q, i] & Bn[q, j]
+                c[i, j] = pij - p_vec[i] * p_vec[j]
+        C += c * V[q]
+    return C
+
 def Ov(bs_mat):
     """Overlap function
     The primary difference between this function and N_actual_overlaps from scc_sat.py
@@ -25,22 +39,56 @@ def Ov(bs_mat):
             Ov[i][j] = np.sum(np.bitwise_and(bs_mat[:, i], bs_mat[:, j]))
     return Ov
 
-def get_output_corr_mat(Cin, Pin, Mf, N):
+def get_vin_iterative(p_vec, cov_mat, N):
+    """Performs a conditional-subtract based iterative algorithm to find Vin"""
+    n = p_vec.size
+    p_vec = p_vec[np.newaxis]
+    No = N*(cov_mat + np.tril(p_vec.T @ p_vec, -1))
+    Bn = B_mat(n)
+    O = np.zeros((2 ** n, n, n), dtype=bool)
+    for i in range(n):
+        for j in range(n):
+            O[:, i, j] = Bn[:, i] & Bn[:, j]
+    O_sum = np.sum(O, axis=(1,2))
+    S = np.argsort(O_sum)[::-1]
+    v_remaining = 1
+    p_remaining = np.copy(p_vec).reshape((n,))
+    Vin = np.zeros(2 ** n)
+    for q in S:
+        Oq = O[q, :, :]
+        if q == 0: #All zeros, no overlaps
+            Vin[q] = v_remaining
+        elif not np.any(np.tril(Oq, -1)): #Single bit, no overlaps
+            v = p_remaining[np.log2(q).astype(np.uint16)]
+            Vin[q] = v
+            v_remaining -= v
+        else: #At least one overlap
+            alpha = 0
+            while not np.any(np.tril(No - (alpha + 1) * Oq, -1) < 0):
+                alpha += 1
+            No -= alpha * np.tril(Oq, -1)
+            v = alpha / N
+            Vin[q] = v
+            v_remaining -= v
+            p_rem_mask = np.sum(Oq, axis=1) > 0
+            p_remaining -= v * p_rem_mask
+    return np.round(Vin + 1e-15, 12) #Round off small floating point errors - makes the output look nicer
+
+def get_vin_mc1(Pin):
+    """Generates a Vin vector for bitstreams mutually correlated with ZSCC=1"""
+    n = Pin.size
+    Vin = np.zeros(2 ** n)
+    Pin_sorted = np.append(np.append(1, np.sort(Pin)[::-1]), 0)
+    for i in range(n+1):
+        Vin[2 ** i - 1] = Pin_sorted[i] - Pin_sorted[i + 1]
+    return Vin
+
+def get_output_corr_mat(Vin, Mf, N):
     """Using ZSCC, compute the output correlation matrix given an input correlation matrix,
     input probabilities, and the circuit's truth table"""
-    
     n, k = np.log2(Mf.shape).astype(np.uint16)
-    Bn = B_mat(n) #Might not need this
     Bk = B_mat(k)
-    #Get Vin from Pin Cin
-    No_in = np.zeros((n, n)) 
-    for i in range(n):
-        for j in range(i):
-            No_in[i][j] = sat.Mij(N * Pin[i], N * Pin[j], Cin[i][j], N, use_zscc=True)
 
-    
-
-    #Vin = None #FIXME
     Vout = Mf.T @ Vin
     Pout = Bk.T @ Vout
 
@@ -50,7 +98,7 @@ def get_output_corr_mat(Cin, Pin, Mf, N):
     for i in range(k):
         for j in range(i):
             Cout[i][j] = bs.bs_zscc_ovs(Pout[i], Pout[j], No_out[i][j], N)
-    return Cout
+    return Vout, Cout
 
 def get_func_mat(func, n, k):
     """Compute the truth table matrix for a boolean function with n inputs and k outputs
@@ -127,6 +175,19 @@ if __name__ == "__main__":
     #N = 6
     #get_output_corr_mat(Cin, Pin, Mf, N)
 
-    b = B_mat(4)
-    bs_arr = [np.packbits(b[:, i]) for i in range(4)]
-    print(bs.get_corr_mat(bs_arr, bs_len=2**4, use_zscc=True))
+    """test ptm_based_corr_mat"""
+    bs1 = np.packbits(np.array([1,0,0,0,0,0]))
+    bs2 = np.packbits(np.array([0,1,1,1,0,0]))
+    bs3 = np.packbits(np.array([0,0,0,0,1,1]))
+    bs_arr = [bs1, bs2, bs3]
+    p_vec = np.array([bs.bs_mean(b, bs_len=6) for b in bs_arr])
+    V = get_vin_mc1(p_vec)
+
+    cov_mat = bs.get_corr_mat(bs_arr, bs_len=6, use_cov=True)
+
+    print(get_vin_iterative(p_vec, cov_mat, 6))
+    #print(cov_mat)
+    #print(ptm_based_cov_mat(V, p_vec, 6))
+
+    """Test get_vin_mc1"""
+    #print(get_vin_mc1(np.array([3/6, 4/6, 5/6])))
