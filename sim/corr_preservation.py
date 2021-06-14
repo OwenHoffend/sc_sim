@@ -78,10 +78,25 @@ def get_vin_mc1(Pin):
     """Generates a Vin vector for bitstreams mutually correlated with ZSCC=1"""
     n = Pin.size
     Vin = np.zeros(2 ** n)
-    Pin_sorted = np.append(np.append(1, np.sort(Pin)[::-1]), 0)
-    for i in range(n+1):
-        Vin[2 ** i - 1] = Pin_sorted[i] - Pin_sorted[i + 1]
-    return Vin
+    Vin[0] = 1 - np.max(Pin)
+    Vin[2 ** n - 1] = np.min(Pin)
+    Pin_sorted = np.argsort(Pin)[::-1]
+    i = 0
+    for k in range(1, n):
+        i += 2 ** Pin_sorted[k - 1]
+        Vin[i] = Pin[Pin_sorted[k - 1]] - Pin[Pin_sorted[k]]
+    return np.round(Vin, 12)
+
+def get_vin_mcn1(Pin):
+    """Generates a Vin vector for bitstreams mutually correlated with ZSCC=-1"""
+    n = Pin.size
+    Vin = np.zeros(2 ** n)
+    Vin[0] = 1 - np.sum(Pin)
+    Pin_sorted = np.argsort(Pin)[::-1]
+    for k in range(n):
+        i = 2 ** Pin_sorted[k]
+        Vin[i] = Pin[Pin_sorted[k]]
+    return np.round(Vin, 12)
 
 def get_output_corr_mat(Vin, Mf, N):
     """Using ZSCC, compute the output correlation matrix given an input correlation matrix,
@@ -99,6 +114,54 @@ def get_output_corr_mat(Vin, Mf, N):
         for j in range(i):
             Cout[i][j] = bs.bs_zscc_ovs(Pout[i], Pout[j], No_out[i][j], N)
     return Vout, Cout
+
+def get_input_corr_mat(Vin, Mf, N):
+    n, k = np.log2(Mf.shape).astype(np.uint16)
+    Bn = B_mat(n)
+
+    Pin = Bn.T @ Vin
+
+    #Get Cin
+    No_in = Ov((Bn * N * np.column_stack(n*[Vin])).astype(np.uint32))
+    Cin = np.zeros((k, k))
+    for i in range(k):
+        for j in range(i):
+            Cin[i][j] = bs.bs_zscc_ovs(Pin[i], Pin[j], No_in[i][j], N)
+    return Cin
+
+def e_err_sweep(N, Mf, pos=True):
+    n, k = np.log2(Mf.shape).astype(np.uint16)
+    p_arr = np.zeros(n)
+    err = np.zeros((k, k))
+    max_err = np.zeros((k, k))
+    for i in range((N - 1) ** n):
+        for j in range(n):
+            p_arr[j] = (np.floor(i / (n ** j)) % (N - 1) + 1) / N #Sometimes you just gotta let the code be magical
+        if pos:
+            vin = get_vin_mc1(p_arr)
+        else:
+            vin = get_vin_mcn1(p_arr)
+        new_err = e_err(vin, Mf, pos=pos) 
+        err += new_err
+        max_err = np.maximum(max_err, new_err)
+    return max_err, err / (N - 1) ** n
+
+def e_err(Vin, Mf, pos=True):
+    n, k = np.log2(Mf.shape).astype(np.uint16)
+    Bk = B_mat(k)
+
+    Vout = Mf.T @ Vin
+    Pout = Bk.T @ Vout
+
+    err = np.zeros((k, k))
+    for i in range(k):
+        for j in range(i):
+            s = np.sum(np.multiply(np.bitwise_and(Bk[:, i], Bk[:, j]), Vout))
+            if pos:
+                err[i, j] = np.abs(s - np.minimum(Pout[i], Pout[j]))
+            else:
+                err[i, j] = np.abs(s - np.maximum(Pout[i] + Pout[j] - 1, 0))
+    return err
 
 def get_func_mat(func, n, k):
     """Compute the truth table matrix for a boolean function with n inputs and k outputs
@@ -147,7 +210,27 @@ def and_3(a, b, c):
     o1 = np.bitwise_and(a, b)
     o2 = np.bitwise_and(b, c)
     o3 = np.bitwise_and(a, c)
-    return o1, o2, o3 
+    return o1, o2, o3
+
+def or_3(a, b, c):
+    o1 = np.bitwise_or(a, b)
+    o2 = np.bitwise_or(b, c)
+    o3 = np.bitwise_or(a, c)
+    return o1, o2, o3
+
+def xor_3(a, b, c):
+    o1 = np.bitwise_xor(a, b)
+    o2 = np.bitwise_xor(b, c)
+    o3 = np.bitwise_xor(a, c)
+    return o1, o2, o3
+
+def passthrough_3(a, b, c):
+    return a, b, c
+
+def xor_4_to_2(x1, x2, x3, x4):
+    o1 = np.bitwise_xor(x1, x2)
+    o2 = np.bitwise_xor(x3, x4)
+    return o1, o2
 
 if __name__ == "__main__":
     """Test B_mat"""
@@ -157,6 +240,8 @@ if __name__ == "__main__":
     """Test get_func_mat"""
     #test_func = lambda a, b: np.array([a & b])
     #print(get_func_mat(test_func, 2, 1))
+    
+    #print(get_func_mat(xor_4_to_2, 4, 2).T)
 
     """Test Ov"""
     #test_num_overlaps(6, 24, 1000)
@@ -173,21 +258,33 @@ if __name__ == "__main__":
     #Pin = None
     #Mf = get_func_mat(and_3, 3, 3)
     #N = 6
-    #get_output_corr_mat(Cin, Pin, Mf, N)
+    #Vin = get_vin_mc1(np.array([3/6, 4/6, 5/6]))
+    #Vin = get_vin_mcn1(np.array([1/6, 3/6, 2/6]))
+    #print(get_output_corr_mat(Vin, Mf, N)[1])
 
-    """test ptm_based_corr_mat"""
-    bs1 = np.packbits(np.array([1,0,0,0,0,0]))
-    bs2 = np.packbits(np.array([0,1,1,1,0,0]))
-    bs3 = np.packbits(np.array([0,0,0,0,1,1]))
-    bs_arr = [bs1, bs2, bs3]
-    p_vec = np.array([bs.bs_mean(b, bs_len=6) for b in bs_arr])
-    V = get_vin_mc1(p_vec)
+    """test ptm_based_corr_mat and get_vin_iterative"""
+    #bs1 = np.packbits(np.array([1,1,1,1,0,0]))
+    #bs2 = np.packbits(np.array([1,1,1,0,0,0]))
+    #bs3 = np.packbits(np.array([1,1,1,1,1,0]))
+    #bs_arr = [bs1, bs2, bs3]
+    #p_vec = np.array([bs.bs_mean(b, bs_len=6) for b in bs_arr])
+    #V = get_vin_mc1(p_vec)
+    #print(V)
 
-    cov_mat = bs.get_corr_mat(bs_arr, bs_len=6, use_cov=True)
+    #cov_mat = bs.get_corr_mat(bs_arr, bs_len=6, use_cov=True)
 
-    print(get_vin_iterative(p_vec, cov_mat, 6))
+    #print(get_vin_iterative(p_vec, cov_mat, 6))
+
     #print(cov_mat)
     #print(ptm_based_cov_mat(V, p_vec, 6))
 
     """Test get_vin_mc1"""
-    #print(get_vin_mc1(np.array([3/6, 4/6, 5/6])))
+    #print(get_vin_mc1(np.array([5/6, 3/6, 4/6])))
+
+    """Test get_vin_mcn1"""
+    #print(get_vin_mcn1(np.array([1/6, 2/6, 2/6])))
+
+    """Test e_err"""
+    #Mf = get_func_mat(and_3, 3, 3)
+    Mf = get_func_mat(xor_3, 3, 3)
+    print("{}\n{}".format(*e_err_sweep(32, Mf)))
