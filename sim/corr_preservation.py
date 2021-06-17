@@ -98,7 +98,18 @@ def get_vin_mcn1(Pin):
         Vin[i] = Pin[Pin_sorted[k]]
     return np.round(Vin, 12)
 
-def get_output_corr_mat(Vin, Mf, N):
+def get_vin_mc0(Pin):
+    n = Pin.size
+    Bn = B_mat(n)
+    Vin = np.zeros(2 ** n)
+    for i in range(2 ** n):
+        prod = 1
+        for j in range(n):
+            prod *= Bn[i, j] * Pin[j]
+        Vin[i] = prod
+    return Vin
+
+def get_output_corr_mat(Vin, Mf, N, use_zscc=True):
     """Using ZSCC, compute the output correlation matrix given an input correlation matrix,
     input probabilities, and the circuit's truth table"""
     n, k = np.log2(Mf.shape).astype(np.uint16)
@@ -108,11 +119,14 @@ def get_output_corr_mat(Vin, Mf, N):
     Pout = Bk.T @ Vout
 
     #Get Cout
-    No_out = Ov((Bk * N * np.column_stack(n*[Vout])).astype(np.uint32))
+    No_out = Ov((Bk * N * np.column_stack(k*[Vout])).astype(np.uint32))
     Cout = np.zeros((k, k))
     for i in range(k):
         for j in range(i):
-            Cout[i][j] = bs.bs_zscc_ovs(Pout[i], Pout[j], No_out[i][j], N)
+            if use_zscc:
+                Cout[i][j] = bs.bs_zscc_ovs(Pout[i], Pout[j], No_out[i][j], N)
+            else:
+                Cout[i][j] = bs.bs_scc_ovs(Pout[i], Pout[j], No_out[i][j], N)
     return Vout, Cout
 
 def get_input_corr_mat(Vin, Mf, N):
@@ -129,7 +143,7 @@ def get_input_corr_mat(Vin, Mf, N):
             Cin[i][j] = bs.bs_zscc_ovs(Pin[i], Pin[j], No_in[i][j], N)
     return Cin
 
-def e_err_sweep(N, Mf, pos=True):
+def e_err_sweep(N, Mf, vin_type):
     n, k = np.log2(Mf.shape).astype(np.uint16)
     p_arr = np.zeros(n)
     err = np.zeros((k, k))
@@ -137,18 +151,20 @@ def e_err_sweep(N, Mf, pos=True):
     for i in range((N - 1) ** n):
         for j in range(n):
             p_arr[j] = (np.floor(i / (n ** j)) % (N - 1) + 1) / N #Sometimes you just gotta let the code be magical
-        if pos:
+        if vin_type == 1:
             vin = get_vin_mc1(p_arr)
-        else:
+        elif vin_type == -1:
             if np.sum(p_arr) > 1:
                 continue
             vin = get_vin_mcn1(p_arr)
-        new_err = e_err(vin, Mf, pos=pos) 
+        else:
+            vin = get_vin_mc0(p_arr)
+        new_err = e_err(vin, Mf, N, vin_type) 
         err += new_err
         max_err = np.maximum(max_err, new_err)
     return max_err, err / (N - 1) ** n
 
-def e_err(Vin, Mf, pos=True):
+def e_err(Vin, Mf, N, vin_type):
     n, k = np.log2(Mf.shape).astype(np.uint16)
     Bk = B_mat(k)
 
@@ -159,10 +175,13 @@ def e_err(Vin, Mf, pos=True):
     for i in range(k):
         for j in range(i):
             s = np.sum(np.multiply(np.bitwise_and(Bk[:, i], Bk[:, j]), Vout))
-            if pos:
+            if vin_type == 1:
                 err[i, j] = np.abs(s - np.minimum(Pout[i], Pout[j]))
-            else:
+            elif vin_type == -1:
                 err[i, j] = np.abs(s - np.maximum(Pout[i] + Pout[j] - 1, 0))
+            else:
+                delta0 = np.floor(Pout[i] * Pout[j] * N + 0.5)/N - Pout[i] * Pout[j]
+                err[i, j] = np.abs(s - Pout[i] * Pout[j] - delta0)
     return err
 
 def get_func_mat(func, n, k):
@@ -172,7 +191,7 @@ def get_func_mat(func, n, k):
     for i in range(2 ** n):
         res = func(*list(bin_array(i, n)))
         if k == 1:
-            num = res
+            num = res.astype(np.uint8)
         else:
             num = 0
             for idx, j in enumerate(res):
@@ -257,7 +276,7 @@ def mux_1(s, x2, x1):
 def mux_2(s, x4, x3, x2, x1):
     m1 = mux_1(s, x2, x1)
     m2 = mux_1(s, x4, x3)
-    return m1, m2    
+    return m1, m2
 
 def mux_3(s, x6, x5, x4, x3, x2, x1):
     m1 = mux_1(s, x2, x1)
@@ -265,7 +284,39 @@ def mux_3(s, x6, x5, x4, x3, x2, x1):
     m3 = mux_1(s, x6, x5)
     return m1, m2, m3
 
+def circular_shift_compare(shifts, k, comp, *x):
+    """Simulation of the circular shift alg"""
+    vals = []
+    x_np = np.array(x)
+    for i in range(k):
+        x_np_int = np.sum([v * (2 ** ind) for ind, v in enumerate(x_np[::-1])])
+        vals.append(comp[i] > x_np_int)
+        x_np = np.roll(x_np, -shifts)
+    return (*vals,)
+
+def circular_shift_corr_sweep(n, k, shifts):
+    Vin = np.array([0, ] + [1 / (2 ** n - 1) for _ in range(2 ** n - 1)])
+    scc_mat = np.zeros((k, k))
+    for i in range(2 ** n):
+        for j in range(2 ** n):
+            func = lambda *x: circular_shift_compare(shifts, k, [i, j], *x)
+            Mf = get_func_mat(func, n, k)
+            scc_mat += np.abs(get_output_corr_mat(Vin, Mf, 2 ** n, use_zscc=False)[1])
+        #print(i)
+    return scc_mat / ((2 ** n) ** 2)
+
 if __name__ == "__main__":
+    """Test circular_shift_compare"""
+    #shifts = 2
+    #n = 4
+    #k = 2
+    #val = 14
+    #func = lambda *x: circular_shift_compare(shifts, k, val, *x)
+    #Mf = get_func_mat(func, n, k)
+    #print(Mf)
+    for i in range(1, 5):
+        print(circular_shift_corr_sweep(5, 2, i))
+
     """Test B_mat"""
     #Vin = np.array([1/6, 0, 0, 1/6, 1/6, 1/6, 1/6, 1/6])
     #print(B_mat(3).T @ Vin))
@@ -323,6 +374,18 @@ if __name__ == "__main__":
     #print("{}\n{}".format(*e_err_sweep(16, Mf, pos=True)))
 
     """Test reduce_func_mat"""
-    Mf = get_func_mat(mux_2, 5, 2)
-    print(Mf.astype(np.uint16))
-    print(reduce_func_mat(Mf, 4, 0.7))
+    #Mf = get_func_mat(mux_2, 5, 2)
+    #print(Mf.astype(np.uint16))
+    #print(reduce_func_mat(Mf, 4, 0.7))
+
+    """Mux input correlation dependence test"""
+    #Mf = get_func_mat(mux_2, 5, 2)
+    #N = 10
+    #err_tot = np.zeros((2, 2))
+    #for i in range(1, N):
+    #    Mfr = reduce_func_mat(Mf, 4, i/N)
+    #    max_err, err = e_err_sweep(N, Mfr, 0)
+    #    err_tot += err
+    #    print(i)
+    #err_tot /= N
+    #print(err_tot)

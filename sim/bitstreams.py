@@ -118,6 +118,18 @@ def bs_scc(bsx, bsy, bs_len=None):
     else:
         return (p_actual - p_uncorr) / (p_uncorr - np.maximum(px + py - 1, 0))
 
+def bs_scc_ovs(pi, pj, No, N):
+    if pi in (0, 1) or pj in (0, 1):
+        #raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
+        return 1 
+
+    p_uncorr  = pi * pj
+    p_actual  = No / N
+    if p_actual > p_uncorr:
+        return (p_actual - p_uncorr) / (np.minimum(pi, pj) - p_uncorr)
+    else:
+        return (p_actual - p_uncorr) / (p_uncorr - np.maximum(pi + pj - 1, 0))
+
 def bs_zce(bsx, bsy, bs_len):
     px = bs_mean(bsx, bs_len=bs_len)
     py = bs_mean(bsy, bs_len=bs_len)
