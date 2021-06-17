@@ -140,6 +140,8 @@ def e_err_sweep(N, Mf, pos=True):
         if pos:
             vin = get_vin_mc1(p_arr)
         else:
+            if np.sum(p_arr) > 1:
+                continue
             vin = get_vin_mcn1(p_arr)
         new_err = e_err(vin, Mf, pos=pos) 
         err += new_err
@@ -169,12 +171,27 @@ def get_func_mat(func, n, k):
     Mf = np.zeros((2 ** n, 2 ** k), dtype=bool)
     for i in range(2 ** n):
         res = func(*list(bin_array(i, n)))
-        num = 0
-        for idx, j in enumerate(res):
-            if j:
-                num += 1 << idx
+        if k == 1:
+            num = res
+        else:
+            num = 0
+            for idx, j in enumerate(res):
+                if j:
+                    num += 1 << idx
         Mf[i][num] = 1
     return Mf
+
+def reduce_func_mat(Mf, idx, p):
+    """Reduce a PTM matrix with a known probability value on one input"""
+    n, k = np.log2(Mf.shape).astype(np.uint16)
+    ss1, ss2 = [], []
+    for i in range(2 ** n):
+        if i % (2 ** (idx + 1)) < 2 ** idx:
+            ss1.append(i)
+        else:
+            ss2.append(i)
+    Mff = Mf.astype(np.float32)
+    return Mff[ss1, :] * p + Mff[ss2, :] * (1-p)
 
 def test_num_overlaps(max_n, max_N, iters, use_zscc=True):
     """Quick random test to be sure that Mij through ZSCC returns the same overlap matrix as count_overlaps"""
@@ -232,6 +249,22 @@ def xor_4_to_2(x1, x2, x3, x4):
     o2 = np.bitwise_xor(x3, x4)
     return o1, o2
 
+def mux_1(s, x2, x1):
+    t1 = np.bitwise_and(x1, np.bitwise_not(s))
+    t2 = np.bitwise_and(x2, s)
+    return np.bitwise_or(t1, t2)
+
+def mux_2(s, x4, x3, x2, x1):
+    m1 = mux_1(s, x2, x1)
+    m2 = mux_1(s, x4, x3)
+    return m1, m2    
+
+def mux_3(s, x6, x5, x4, x3, x2, x1):
+    m1 = mux_1(s, x2, x1)
+    m2 = mux_1(s, x4, x3)
+    m3 = mux_1(s, x6, x5)
+    return m1, m2, m3
+
 if __name__ == "__main__":
     """Test B_mat"""
     #Vin = np.array([1/6, 0, 0, 1/6, 1/6, 1/6, 1/6, 1/6])
@@ -286,5 +319,10 @@ if __name__ == "__main__":
 
     """Test e_err"""
     #Mf = get_func_mat(and_3, 3, 3)
-    Mf = get_func_mat(xor_3, 3, 3)
-    print("{}\n{}".format(*e_err_sweep(32, Mf)))
+    #Mf = get_func_mat(xor_3, 3, 3)
+    #print("{}\n{}".format(*e_err_sweep(16, Mf, pos=True)))
+
+    """Test reduce_func_mat"""
+    Mf = get_func_mat(mux_2, 5, 2)
+    print(Mf.astype(np.uint16))
+    print(reduce_func_mat(Mf, 4, 0.7))
