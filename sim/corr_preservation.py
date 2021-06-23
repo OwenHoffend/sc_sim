@@ -11,7 +11,7 @@ def B_mat(n):
     """Generate a 2^n by n matrix of all of the possible values of n bits"""
     B = np.zeros((2 ** n, n), dtype=bool)
     for i in range(2 ** n):
-        B[i][:] = bin_array(i, n)
+        B[i][:] = bin_array(i, n)[::-1]
     return B
 
 def ptm_based_cov_mat(V, p_vec, N):
@@ -99,6 +99,7 @@ def get_vin_mcn1(Pin):
     return np.round(Vin, 12)
 
 def get_vin_mc0(Pin):
+    """Generates a Vin vector for bitstreams mutually correlated with ZSCC=0"""
     n = Pin.size
     Bn = B_mat(n)
     Vin = np.zeros(2 ** n)
@@ -143,6 +144,28 @@ def get_input_corr_mat(Vin, Mf, N):
             Cin[i][j] = bs.bs_zscc_ovs(Pin[i], Pin[j], No_in[i][j], N)
     return Cin
 
+def corr_err(Px, Mf1, Mf2, c1, c2, N=128):
+    """Get the correlation error produced by a two-layer circuit"""
+    def get_vin(Pin, c):
+        if c == -1:
+            return get_vin_mcn1(Pin)
+        elif c == 1:
+            return get_vin_mc1(Pin)
+        elif c == 0:
+            return get_vin_mc0(Pin)
+        else:
+            return get_vin_iterative(Pin, c, N) #If c is not a scalar constant, interpret as a covariance matrix
+    n1, k1 = np.log2(Mf1.shape).astype(np.uint16)
+    k_check, k2 = np.log2(Mf2.shape).astype(np.uint16)
+    assert k_check == k1
+    ce = np.zeros((k2, k2))
+    Vc1 = get_vin(Px, c1)
+    Bk1 = B_mat(k1)
+    Bk2 = B_mat(k2)
+    Vz1_actual = Mf1.T @ Vc1
+    Vz1_ideal = get_vin(Bk1.T @ Vz1_actual, c2)
+    return Bk2.T @ Mf2.T @ np.abs(Vz1_actual - Vz1_ideal)
+
 def e_err_sweep(N, Mf, vin_type):
     n, k = np.log2(Mf.shape).astype(np.uint16)
     p_arr = np.zeros(n)
@@ -176,12 +199,13 @@ def e_err(Vin, Mf, N, vin_type):
         for j in range(i):
             s = np.sum(np.multiply(np.bitwise_and(Bk[:, i], Bk[:, j]), Vout))
             if vin_type == 1:
-                err[i, j] = np.abs(s - np.minimum(Pout[i], Pout[j]))
+                correct = np.minimum(Pout[i], Pout[j])
             elif vin_type == -1:
-                err[i, j] = np.abs(s - np.maximum(Pout[i] + Pout[j] - 1, 0))
+                correct = np.maximum(Pout[i] + Pout[j] - 1, 0)
             else:
                 delta0 = np.floor(Pout[i] * Pout[j] * N + 0.5)/N - Pout[i] * Pout[j]
-                err[i, j] = np.abs(s - Pout[i] * Pout[j] - delta0)
+                correct = Pout[i] * Pout[j] + delta0
+            err[i, j] = np.abs(s - correct) / (correct + 1e-15)
     return err
 
 def get_func_mat(func, n, k):
@@ -314,8 +338,8 @@ if __name__ == "__main__":
     #func = lambda *x: circular_shift_compare(shifts, k, val, *x)
     #Mf = get_func_mat(func, n, k)
     #print(Mf)
-    for i in range(1, 5):
-        print(circular_shift_corr_sweep(5, 2, i))
+    #for i in range(1, 5):
+    #    print(circular_shift_corr_sweep(5, 2, i))
 
     """Test B_mat"""
     #Vin = np.array([1/6, 0, 0, 1/6, 1/6, 1/6, 1/6, 1/6])
@@ -370,8 +394,8 @@ if __name__ == "__main__":
 
     """Test e_err"""
     #Mf = get_func_mat(and_3, 3, 3)
-    #Mf = get_func_mat(xor_3, 3, 3)
-    #print("{}\n{}".format(*e_err_sweep(16, Mf, pos=True)))
+    #Mf = get_func_mat(or_3, 3, 3)
+    #print("{}\n{}".format(*e_err_sweep(16, Mf, -1)))
 
     """Test reduce_func_mat"""
     #Mf = get_func_mat(mux_2, 5, 2)
@@ -389,3 +413,13 @@ if __name__ == "__main__":
     #    print(i)
     #err_tot /= N
     #print(err_tot)
+
+    """Two-layer mux tree correlation error test"""
+    def layer1(w1, x1, x2, x3):
+        return mux_1(w1, x1, x2), x3
+    def layer2(w2, m1, x3):
+        return mux_1(w2, m1, x3)
+    Mf1 = reduce_func_mat(get_func_mat(layer1, 4, 2), 3, 0.5)
+    Mf2 = reduce_func_mat(get_func_mat(layer2, 3, 1), 2, 0.5)
+    Px = np.array([0.4, 0.5, 0.5])
+    print(corr_err(Px, Mf1, Mf2, 1, 1))
