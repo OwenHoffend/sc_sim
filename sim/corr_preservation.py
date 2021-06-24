@@ -106,7 +106,7 @@ def get_vin_mc0(Pin):
     for i in range(2 ** n):
         prod = 1
         for j in range(n):
-            prod *= Bn[i, j] * Pin[j]
+            prod *= (Bn[i, j] * Pin[j] + (1 - Bn[i, j]) * (1 - Pin[j]))
         Vin[i] = prod
     return Vin
 
@@ -164,7 +164,7 @@ def corr_err(Px, Mf1, Mf2, c1, c2, N=128):
     Bk2 = B_mat(k2)
     Vz1_actual = Mf1.T @ Vc1
     Vz1_ideal = get_vin(Bk1.T @ Vz1_actual, c2)
-    return Bk2.T @ Mf2.T @ np.abs(Vz1_actual - Vz1_ideal)
+    return np.abs(Bk2.T @ Mf2.T @ (Vz1_actual - Vz1_ideal))
 
 def e_err_sweep(N, Mf, vin_type):
     n, k = np.log2(Mf.shape).astype(np.uint16)
@@ -173,7 +173,7 @@ def e_err_sweep(N, Mf, vin_type):
     max_err = np.zeros((k, k))
     for i in range((N - 1) ** n):
         for j in range(n):
-            p_arr[j] = (np.floor(i / (n ** j)) % (N - 1) + 1) / N #Sometimes you just gotta let the code be magical
+            p_arr[j] = (np.floor(i / ((N-1) ** j)) % (N - 1) + 1) / N
         if vin_type == 1:
             vin = get_vin_mc1(p_arr)
         elif vin_type == -1:
@@ -203,9 +203,10 @@ def e_err(Vin, Mf, N, vin_type):
             elif vin_type == -1:
                 correct = np.maximum(Pout[i] + Pout[j] - 1, 0)
             else:
-                delta0 = np.floor(Pout[i] * Pout[j] * N + 0.5)/N - Pout[i] * Pout[j]
-                correct = Pout[i] * Pout[j] + delta0
-            err[i, j] = np.abs(s - correct) / (correct + 1e-15)
+                #delta0 = np.floor(Pout[i] * Pout[j] * N + 0.5)/N - Pout[i] * Pout[j]
+                #correct = Pout[i] * Pout[j] + delta0
+                correct = np.floor(Pout[i] * Pout[j] * N + 0.5)/N
+            err[i, j] = np.abs(s - correct) / (np.maximum(s, correct) + 1e-15)
     return err
 
 def get_func_mat(func, n, k):
@@ -392,9 +393,12 @@ if __name__ == "__main__":
     """Test get_vin_mcn1"""
     #print(get_vin_mcn1(np.array([1/6, 2/6, 2/6])))
 
+    """Test get_vin_mc0"""
+    #print(get_vin_mc0(np.array([1/3, 1/4])))
+
     """Test e_err"""
     #Mf = get_func_mat(and_3, 3, 3)
-    #Mf = get_func_mat(or_3, 3, 3)
+    #Mf = get_func_mat(xor_3, 3, 3)
     #print("{}\n{}".format(*e_err_sweep(16, Mf, -1)))
 
     """Test reduce_func_mat"""
@@ -422,4 +426,4 @@ if __name__ == "__main__":
     Mf1 = reduce_func_mat(get_func_mat(layer1, 4, 2), 3, 0.5)
     Mf2 = reduce_func_mat(get_func_mat(layer2, 3, 1), 2, 0.5)
     Px = np.array([0.4, 0.5, 0.5])
-    print(corr_err(Px, Mf1, Mf2, 1, 1))
+    print(corr_err(Px, Mf1, Mf2, -1, -1))
