@@ -166,29 +166,38 @@ def corr_err(Px, Mf1, Mf2, c1, c2, N=128):
     Vz1_ideal = get_vin(Bk1.T @ Vz1_actual, c2)
     return np.abs(Bk2.T @ Mf2.T @ (Vz1_actual - Vz1_ideal))
 
-def e_err_sweep(N, Mf, vin_type):
+def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
     n, k = np.log2(Mf.shape).astype(np.uint16)
+    if Mf2 is not None:
+        _, k = np.log2(Mf2.shape).astype(np.uint16)
     p_arr = np.zeros(n)
     err = np.zeros((k, k))
     max_err = np.zeros((k, k))
     for i in range((N - 1) ** n):
         for j in range(n):
             p_arr[j] = (np.floor(i / ((N-1) ** j)) % (N - 1) + 1) / N
-        if vin_type == 1:
-            vin = get_vin_mc1(p_arr)
-        elif vin_type == -1:
-            if np.sum(p_arr) > 1:
-                continue
-            vin = get_vin_mcn1(p_arr)
+        if err_type == 'e':
+            if vin_type == 1:
+                vin = get_vin_mc1(p_arr)
+            elif vin_type == -1:
+                if np.sum(p_arr) > 1:
+                    continue
+                vin = get_vin_mcn1(p_arr)
+            elif vin_type == 0:
+                vin = get_vin_mc0(p_arr)
+            else:
+                raise ValueError("Not valid vin type")
+            new_err = e_err(vin, Mf, N, vin_type)
+        elif err_type == 'c':
+            new_err = corr_err(p_arr, Mf, Mf2, vin_type, 0, N=N)
         else:
-            vin = get_vin_mc0(p_arr)
-        new_err = e_err(vin, Mf, N, vin_type) 
+            raise ValueError("Not a valid error type")
         err += new_err
         max_err = np.maximum(max_err, new_err)
     return max_err, err / (N - 1) ** n
 
 def e_err(Vin, Mf, N, vin_type):
-    n, k = np.log2(Mf.shape).astype(np.uint16)
+    _, k = np.log2(Mf.shape).astype(np.uint16)
     Bk = B_mat(k)
 
     Vout = Mf.T @ Vin
@@ -206,7 +215,7 @@ def e_err(Vin, Mf, N, vin_type):
                 #delta0 = np.floor(Pout[i] * Pout[j] * N + 0.5)/N - Pout[i] * Pout[j]
                 #correct = Pout[i] * Pout[j] + delta0
                 correct = np.floor(Pout[i] * Pout[j] * N + 0.5)/N
-            err[i, j] = np.abs(s - correct) / (np.maximum(s, correct) + 1e-15)
+            err[i, j] = 2 * np.abs(s - correct) / (s + correct + 1e-15)
     return err
 
 def get_func_mat(func, n, k):
@@ -302,6 +311,18 @@ def mux_2(s, x4, x3, x2, x1):
     m1 = mux_1(s, x2, x1)
     m2 = mux_1(s, x4, x3)
     return m1, m2
+
+def unbalanced_mux_2(s, x3, x2, x1):
+    return mux_1(s, x1, x2), x3
+
+def robert_cross(s, x4, x3, x2, x1):
+    x1, x2 = xor_4_to_2(x4, x3, x2, x1)
+    return mux_1(s, x1, x2)
+
+def robert_cross_2(s, x8, x7, x6, x5, x4, x3, x2, x1):
+    r1 = robert_cross(s, x8, x7, x6, x5)
+    r2 = robert_cross(s, x4, x3, x2, x1)
+    return r1, r2
 
 def mux_3(s, x6, x5, x4, x3, x2, x1):
     m1 = mux_1(s, x2, x1)
@@ -399,7 +420,7 @@ if __name__ == "__main__":
     """Test e_err"""
     #Mf = get_func_mat(and_3, 3, 3)
     #Mf = get_func_mat(xor_3, 3, 3)
-    #print("{}\n{}".format(*e_err_sweep(16, Mf, -1)))
+    #print("{}\n{}".format(*err_sweep(16, Mf, -1)))
 
     """Test reduce_func_mat"""
     #Mf = get_func_mat(mux_2, 5, 2)
@@ -408,22 +429,47 @@ if __name__ == "__main__":
 
     """Mux input correlation dependence test"""
     #Mf = get_func_mat(mux_2, 5, 2)
-    #N = 10
+    #Mf = get_func_mat(unbalanced_mux_2, 4, 2)
+    #N = 20
     #err_tot = np.zeros((2, 2))
     #for i in range(1, N):
-    #    Mfr = reduce_func_mat(Mf, 4, i/N)
-    #    max_err, err = e_err_sweep(N, Mfr, 0)
+    #    #Mfr = reduce_func_mat(Mf, 4, i/N)
+    #    Mfr = reduce_func_mat(Mf, 3, i/N)
+    #    max_err, err = err_sweep(N, Mfr, 0)
     #    err_tot += err
     #    print(i)
     #err_tot /= N
     #print(err_tot)
 
-    """Two-layer mux tree correlation error test"""
-    def layer1(w1, x1, x2, x3):
-        return mux_1(w1, x1, x2), x3
-    def layer2(w2, m1, x3):
-        return mux_1(w2, m1, x3)
-    Mf1 = reduce_func_mat(get_func_mat(layer1, 4, 2), 3, 0.5)
-    Mf2 = reduce_func_mat(get_func_mat(layer2, 3, 1), 2, 0.5)
-    Px = np.array([0.4, 0.5, 0.5])
-    print(corr_err(Px, Mf1, Mf2, -1, -1))
+    """xor input correlation dependence test"""
+    #Mf = get_func_mat(xor_4_to_2, 4, 2)
+    #print("{}\n{}".format(*err_sweep(20, Mf, 1)))
+
+    """Two-layer unbalanced mux tree correlation error test"""
+    #Mf1 = reduce_func_mat(get_func_mat(unbalanced_mux_2, 4, 2), 3, 0.5)
+    #Mf2 = reduce_func_mat(get_func_mat(mux_1, 3, 1), 2, 0.5)
+    #Px = np.array([0.4, 0.1, 0.9])
+    #print(corr_err(Px, Mf1, Mf2, 1, 1))
+    #print(err_sweep(32, Mf1, -1, err_type='c', Mf2=Mf2))
+
+    """Two-layer balanced mux tree correlation error test"""
+    #def layer1(w1, w2, x1, x2, x3, x4):
+    #    return mux_1(w1, x1, x2), mux_1(w2, x3, x4)
+    #Mf1 = reduce_func_mat(get_func_mat(layer1, 6, 2), 4, 0.5)
+    #Mf1 = reduce_func_mat(Mf1, 4, 0.5)
+    #Mf2 = reduce_func_mat(get_func_mat(mux_1, 3, 1), 2, 0.5)
+    #print(err_sweep(20, Mf1, 1, err_type='c', Mf2=Mf2))
+
+    """Robert's cross edge detect test"""
+    #Mf1 = get_func_mat(xor_4_to_2, 4, 2)
+    #Mf2 = reduce_func_mat(get_func_mat(mux_1, 3, 1), 2, 0.5)
+    #print(err_sweep(20, Mf1, 1, err_type='c', Mf2=Mf2))
+
+    """Two layer circuit with actual CE"""
+    Mf1 = get_func_mat(xor_4_to_2, 4, 2)
+    Mf2 = get_func_mat(np.bitwise_and, 2, 1)
+    print(err_sweep(20, Mf1, 1, err_type='c', Mf2=Mf2))
+
+    """Two-layer Robert's cross edge detect test"""
+    #Mf1 = reduce_func_mat(get_func_mat(robert_cross_2, 9, 2), 8, 0.5)
+    #print(err_sweep(6, Mf1, 1))
