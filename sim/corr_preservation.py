@@ -1,7 +1,10 @@
 import numpy as np
+import torch
 from numpy.lib import unpackbits
-import scc_sat as sat
-import bitstreams as bs
+import sim.bitstreams as bs
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+cpu = torch.device("cpu")
 
 def bin_array(num, m):
     """Convert a positive integer num into an m-bit bit vector"""
@@ -22,7 +25,7 @@ def ptm_based_cov_mat(V, p_vec, N):
     for q in range(2 ** n):
         c = np.zeros((n, n))
         for i in range(n):
-            for j in range(j):
+            for j in range(i):
                 pij = Bn[q, i] & Bn[q, j]
                 c[i, j] = pij - p_vec[i] * p_vec[j]
         C += c * V[q]
@@ -87,6 +90,18 @@ def get_vin_mc1(Pin):
         Vin[i] = Pin[Pin_sorted[k - 1]] - Pin[Pin_sorted[k]]
     return np.round(Vin, 12)
 
+def get_vin_mc1_cuda(Pin):
+    n = Pin.size()[0]
+    Vin = torch.cuda.FloatTensor(2 ** n).fill_(0)
+    Vin[0] = 1 - torch.max(Pin)
+    Vin[2 ** n - 1] = torch.min(Pin)
+    Pin_sorted = torch.argsort(Pin, descending=True)
+    i = 0
+    for k in range(1, n):
+        i += 2 ** Pin_sorted[k - 1]
+        Vin[i] = Pin[Pin_sorted[k - 1]] - Pin[Pin_sorted[k]]
+    return Vin
+
 def get_vin_mcn1(Pin):
     """Generates a Vin vector for bitstreams mutually correlated with ZSCC=-1"""
     n = Pin.size
@@ -98,11 +113,32 @@ def get_vin_mcn1(Pin):
         Vin[i] = Pin[Pin_sorted[k]]
     return np.round(Vin, 12)
 
+def get_vin_mcn1_cuda(Pin):
+    n = Pin.size()[0]
+    Vin = torch.cuda.FloatTensor(2 ** n).fill_(0)
+    Vin[0] = 1 - np.sum(Pin)
+    Pin_sorted = np.argsort(Pin, descending=True)
+    for k in range(n):
+        i = 2 ** Pin_sorted[k]
+        Vin[i] = Pin[Pin_sorted[k]]
+    return Vin
+
 def get_vin_mc0(Pin):
     """Generates a Vin vector for bitstreams mutually correlated with ZSCC=0"""
     n = Pin.size
     Bn = B_mat(n)
     Vin = np.zeros(2 ** n)
+    for i in range(2 ** n):
+        prod = 1
+        for j in range(n):
+            prod *= (Bn[i, j] * Pin[j] + (1 - Bn[i, j]) * (1 - Pin[j]))
+        Vin[i] = prod
+    return Vin
+
+def get_vin_mc0_cuda(Pin):
+    n = Pin.size()[0]
+    Bn = B_mat(n)
+    Vin = torch.cuda.FloatTensor(2 ** n).fill_(0)
     for i in range(2 ** n):
         prod = 1
         for j in range(n):
@@ -158,13 +194,33 @@ def corr_err(Px, Mf1, Mf2, c1, c2, N=128):
     n1, k1 = np.log2(Mf1.shape).astype(np.uint16)
     k_check, k2 = np.log2(Mf2.shape).astype(np.uint16)
     assert k_check == k1
-    ce = np.zeros((k2, k2))
     Vc1 = get_vin(Px, c1)
     Bk1 = B_mat(k1)
     Bk2 = B_mat(k2)
     Vz1_actual = Mf1.T @ Vc1
     Vz1_ideal = get_vin(Bk1.T @ Vz1_actual, c2)
     return np.abs(Bk2.T @ Mf2.T @ (Vz1_actual - Vz1_ideal))
+
+def corr_err_cuda(Px, Mf1, Mf2, c1, c2, N=128):
+    """Get the correlation error produced by a two-layer circuit"""
+    def get_vin_cuda(Pin, c):
+        if c == -1:
+            return get_vin_mcn1_cuda(Pin)
+        elif c == 1:
+            return get_vin_mc1_cuda(Pin)
+        elif c == 0:
+            return get_vin_mc0_cuda(Pin)
+        else:
+            return get_vin_iterative(Pin, c, N) #If c is not a scalar constant, interpret as a covariance matrix
+    n1, k1 = np.log2(Mf1.shape).astype(np.uint16)
+    k_check, k2 = np.log2(Mf2.shape).astype(np.uint16)
+    assert k_check == k1
+    Vc1 = get_vin_cuda(Px, c1)
+    Bk1 = torch.tensor(B_mat(k1).astype(np.float32)).to(device)
+    Bk2 = torch.tensor(B_mat(k2).astype(np.float32)).to(device)
+    Vz1_actual = Mf1.T @ Vc1
+    Vz1_ideal = get_vin_cuda(Bk1.T @ Vz1_actual, c2)
+    return torch.abs(Bk2.T @ Mf2.T @ (Vz1_actual - Vz1_ideal))
 
 def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
     n, k = np.log2(Mf.shape).astype(np.uint16)
@@ -196,6 +252,37 @@ def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
         max_err = np.maximum(max_err, new_err)
     return max_err, err / (N - 1) ** n
 
+def err_sweep_cuda(N, Mf, vin_type, err_type='e', Mf2=None):
+    """CUDA-accelerated version of err_sweep"""
+    n, k = np.log2(Mf.shape).astype(np.uint16)
+    if Mf2 is not None:
+        _, k = np.log2(Mf2.shape).astype(np.uint16)
+    p_arr = torch.cuda.FloatTensor(n).fill_(0)
+    err = torch.cuda.FloatTensor((k, k)).fill_(0)
+    max_err = torch.cuda.FloatTensor((k, k)).fill_(0)
+    for i in range((N - 1) ** n):
+        for j in range(n):
+            p_arr[j] = (np.floor(i / ((N-1) ** j)) % (N - 1) + 1) / N
+        if err_type == 'e':
+            if vin_type == 1:
+                vin = get_vin_mc1_cuda(p_arr)
+            elif vin_type == -1:
+                if np.sum(p_arr) > 1:
+                    continue
+                vin = get_vin_mcn1_cuda(p_arr)
+            elif vin_type == 0:
+                vin = get_vin_mc0_cuda(p_arr)
+            else:
+                raise ValueError("Not valid vin type")
+            new_err = e_err_cuda(vin, Mf, N, vin_type)
+        elif err_type == 'c':
+            new_err = corr_err_cuda(p_arr, Mf, Mf2, vin_type, 0, N=N)
+        else:
+            raise ValueError("Not a valid error type")
+        err += new_err
+        max_err = torch.maximum(max_err, new_err)
+    return max_err, err / (N - 1) ** n
+
 def e_err(Vin, Mf, N, vin_type):
     _, k = np.log2(Mf.shape).astype(np.uint16)
     Bk = B_mat(k)
@@ -212,8 +299,26 @@ def e_err(Vin, Mf, N, vin_type):
             elif vin_type == -1:
                 correct = np.maximum(Pout[i] + Pout[j] - 1, 0)
             else:
-                #delta0 = np.floor(Pout[i] * Pout[j] * N + 0.5)/N - Pout[i] * Pout[j]
-                #correct = Pout[i] * Pout[j] + delta0
+                correct = np.floor(Pout[i] * Pout[j] * N + 0.5)/N
+            err[i, j] = 2 * np.abs(s - correct) / (s + correct + 1e-15)
+    return err
+
+def e_err_cuda(Vin, Mf, N, vin_type):
+    _, k = np.log2(Mf.shape).astype(np.uint16)
+    Bk = B_mat(k)
+
+    Vout = Mf.T @ Vin
+    Pout = Bk.T @ Vout
+
+    err = np.zeros((k, k))
+    for i in range(k):
+        for j in range(i):
+            s = np.sum(np.multiply(np.bitwise_and(Bk[:, i], Bk[:, j]), Vout))
+            if vin_type == 1:
+                correct = np.minimum(Pout[i], Pout[j])
+            elif vin_type == -1:
+                correct = np.maximum(Pout[i] + Pout[j] - 1, 0)
+            else:
                 correct = np.floor(Pout[i] * Pout[j] * N + 0.5)/N
             err[i, j] = 2 * np.abs(s - correct) / (s + correct + 1e-15)
     return err
@@ -245,36 +350,6 @@ def reduce_func_mat(Mf, idx, p):
             ss2.append(i)
     Mff = Mf.astype(np.float32)
     return Mff[ss1, :] * p + Mff[ss2, :] * (1-p)
-
-def test_num_overlaps(max_n, max_N, iters, use_zscc=True):
-    """Quick random test to be sure that Mij through ZSCC returns the same overlap matrix as count_overlaps"""
-    for _ in range(iters):
-        n = max_n
-        N = max_N
-        rng = bs.SC_RNG()
-        bs_arr = [rng.bs_uniform(N, np.random.rand(), keep_rng=False) for _ in range(n)]
-        p_arr = np.array([bs.bs_mean(s, bs_len=N) for s in bs_arr])
-        if np.any(p_arr == 1.0) or np.any(p_arr == 0.0): #Filter out streams with undefined sccs wrt the others
-            continue
-        c_mat = bs.get_corr_mat(bs_arr, bs_len=N, use_zscc=use_zscc)
-        No_correct = np.zeros((n, n))
-        No_predicted = Ov(np.array([np.unpackbits(x) for x in bs_arr]).T) #np.zeros((n, n))
-        for i in range(n):
-            for j in range(i):
-                #Ni = N * p_arr[i]
-                #Nj = N * p_arr[j]
-                #c = c_mat[i][j]
-                #No_predicted[i][j] = sat.Mij(Ni, Nj, c, N, use_zscc=use_zscc)
-                No_correct[i][j] = sat.N_actual_overlaps(bs_arr[i], bs_arr[j])
-        if not np.allclose(No_predicted, No_correct):
-            print("FAIL: \n{} != \n{}".format(No_predicted, No_correct))
-            print("bs_arr: {}".format([np.unpackbits(x) for x in bs_arr]))
-            print("P_arr: {}".format(p_arr))
-            print("c_mat: {}".format(c_mat))
-            return False
-        print("Case PASS: {}".format(No_predicted))
-    print("OVERALL PASS")
-    return True
 
 def and_3(a, b, c):
     o1 = np.bitwise_and(a, b)
@@ -350,126 +425,3 @@ def circular_shift_corr_sweep(n, k, shifts):
             scc_mat += np.abs(get_output_corr_mat(Vin, Mf, 2 ** n, use_zscc=False)[1])
         #print(i)
     return scc_mat / ((2 ** n) ** 2)
-
-if __name__ == "__main__":
-    """Test circular_shift_compare"""
-    #shifts = 2
-    #n = 4
-    #k = 2
-    #val = 14
-    #func = lambda *x: circular_shift_compare(shifts, k, val, *x)
-    #Mf = get_func_mat(func, n, k)
-    #print(Mf)
-    #for i in range(1, 5):
-    #    print(circular_shift_corr_sweep(5, 2, i))
-
-    """Test B_mat"""
-    #Vin = np.array([1/6, 0, 0, 1/6, 1/6, 1/6, 1/6, 1/6])
-    #print(B_mat(3).T @ Vin))
-
-    """Test get_func_mat"""
-    #test_func = lambda a, b: np.array([a & b])
-    #print(get_func_mat(test_func, 2, 1))
-    
-    #print(get_func_mat(xor_4_to_2, 4, 2).T)
-
-    """Test Ov"""
-    #test_num_overlaps(6, 24, 1000)
-    #a = np.array([
-    #    [0, 0, 0],
-    #    [0, 1, 1],
-    #    [1, 0, 0],
-    #    [2, 2, 0]
-    #])
-    #print(Ov(a))
-
-    """Test get_output_corr_mat"""
-    #Cin = None
-    #Pin = None
-    #Mf = get_func_mat(and_3, 3, 3)
-    #N = 6
-    #Vin = get_vin_mc1(np.array([3/6, 4/6, 5/6]))
-    #Vin = get_vin_mcn1(np.array([1/6, 3/6, 2/6]))
-    #print(get_output_corr_mat(Vin, Mf, N)[1])
-
-    """test ptm_based_corr_mat and get_vin_iterative"""
-    #bs1 = np.packbits(np.array([1,1,1,1,0,0]))
-    #bs2 = np.packbits(np.array([1,1,1,0,0,0]))
-    #bs3 = np.packbits(np.array([1,1,1,1,1,0]))
-    #bs_arr = [bs1, bs2, bs3]
-    #p_vec = np.array([bs.bs_mean(b, bs_len=6) for b in bs_arr])
-    #V = get_vin_mc1(p_vec)
-    #print(V)
-
-    #cov_mat = bs.get_corr_mat(bs_arr, bs_len=6, use_cov=True)
-
-    #print(get_vin_iterative(p_vec, cov_mat, 6))
-
-    #print(cov_mat)
-    #print(ptm_based_cov_mat(V, p_vec, 6))
-
-    """Test get_vin_mc1"""
-    #print(get_vin_mc1(np.array([5/6, 3/6, 4/6])))
-
-    """Test get_vin_mcn1"""
-    #print(get_vin_mcn1(np.array([1/6, 2/6, 2/6])))
-
-    """Test get_vin_mc0"""
-    #print(get_vin_mc0(np.array([1/3, 1/4])))
-
-    """Test e_err"""
-    #Mf = get_func_mat(and_3, 3, 3)
-    #Mf = get_func_mat(xor_3, 3, 3)
-    #print("{}\n{}".format(*err_sweep(16, Mf, -1)))
-
-    """Test reduce_func_mat"""
-    #Mf = get_func_mat(mux_2, 5, 2)
-    #print(Mf.astype(np.uint16))
-    #print(reduce_func_mat(Mf, 4, 0.7))
-
-    """Mux input correlation dependence test"""
-    #Mf = get_func_mat(mux_2, 5, 2)
-    #Mf = get_func_mat(unbalanced_mux_2, 4, 2)
-    #N = 20
-    #err_tot = np.zeros((2, 2))
-    #for i in range(1, N):
-    #    #Mfr = reduce_func_mat(Mf, 4, i/N)
-    #    Mfr = reduce_func_mat(Mf, 3, i/N)
-    #    max_err, err = err_sweep(N, Mfr, 0)
-    #    err_tot += err
-    #    print(i)
-    #err_tot /= N
-    #print(err_tot)
-
-    """xor input correlation dependence test"""
-    #Mf = get_func_mat(xor_4_to_2, 4, 2)
-    #print("{}\n{}".format(*err_sweep(20, Mf, 1)))
-
-    """Two-layer unbalanced mux tree correlation error test"""
-    #Mf1 = reduce_func_mat(get_func_mat(unbalanced_mux_2, 4, 2), 3, 0.5)
-    #Mf2 = reduce_func_mat(get_func_mat(mux_1, 3, 1), 2, 0.5)
-    #Px = np.array([0.4, 0.1, 0.9])
-    #print(corr_err(Px, Mf1, Mf2, 1, 1))
-    #print(err_sweep(32, Mf1, -1, err_type='c', Mf2=Mf2))
-
-    """Two-layer balanced mux tree correlation error test"""
-    #def layer1(w1, w2, x1, x2, x3, x4):
-    #    return mux_1(w1, x1, x2), mux_1(w2, x3, x4)
-    #Mf1 = reduce_func_mat(get_func_mat(layer1, 6, 2), 4, 0.5)
-    #Mf1 = reduce_func_mat(Mf1, 4, 0.5)
-    #Mf2 = reduce_func_mat(get_func_mat(mux_1, 3, 1), 2, 0.5)
-    #print(err_sweep(20, Mf1, 1, err_type='c', Mf2=Mf2))
-
-    """Robert's cross edge detect test"""
-    #Mf1 = get_func_mat(xor_4_to_2, 4, 2)
-    #Mf2 = reduce_func_mat(get_func_mat(mux_1, 3, 1), 2, 0.5)
-    #print(err_sweep(20, Mf1, 1, err_type='c', Mf2=Mf2))
-
-    """Two layer circuit with actual CE"""
-    Mf1 = get_func_mat(xor_4_to_2, 4, 2)
-    Mf2 = get_func_mat(np.bitwise_and, 2, 1)
-    print(err_sweep(20, Mf1, 1, err_type='c', Mf2=Mf2))
-
-    """Two-layer Robert's cross edge detect test"""
-    #Mf1 = reduce_func_mat(get_func_mat(robert_cross_2, 9, 2), 8, 0.5)
-    #print(err_sweep(6, Mf1, 1))

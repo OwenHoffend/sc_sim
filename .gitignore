@@ -132,3 +132,5 @@ dmypy.json
 
 *.png
 *.jpg
+.prof_stats
+profiling_stats.txt
