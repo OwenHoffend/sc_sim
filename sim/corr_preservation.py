@@ -1,3 +1,4 @@
+import typing_extensions
 import numpy as np
 import torch
 from numpy.lib import unpackbits
@@ -10,11 +11,17 @@ def bin_array(num, m):
     """Convert a positive integer num into an m-bit bit vector"""
     return np.array(list(np.binary_repr(num).zfill(m))).astype(np.int8)
 
-def B_mat(n):
+B_mat_dict = {}
+def B_mat(n, cuda=False):
     """Generate a 2^n by n matrix of all of the possible values of n bits"""
+    if n in B_mat_dict.keys():
+        return B_mat_dict[n]
     B = np.zeros((2 ** n, n), dtype=bool)
     for i in range(2 ** n):
         B[i][:] = bin_array(i, n)[::-1]
+    if cuda:
+        B = torch.tensor(B.astype(np.float32)).to(device)
+    B_mat_dict[n] = B
     return B
 
 def ptm_based_cov_mat(V, p_vec, N):
@@ -91,16 +98,19 @@ def get_vin_mc1(Pin):
     return np.round(Vin, 12)
 
 def get_vin_mc1_cuda(Pin):
-    n = Pin.size()[0]
-    Vin = torch.cuda.FloatTensor(2 ** n).fill_(0)
-    Vin[0] = 1 - torch.max(Pin)
-    Vin[2 ** n - 1] = torch.min(Pin)
-    Pin_sorted = torch.argsort(Pin, descending=True)
-    i = 0
+    b, n = Pin.shape
+    Vin = torch.cuda.FloatTensor(b, 2 ** n).fill_(0)
+    Vin[:, 0] = 1 - torch.max(Pin, dim=1).values
+    Vin[:, 2 ** n - 1] = torch.min(Pin, dim=1).values
+    Pin_sorted = torch.argsort(Pin, dim=1, descending=True)
+    i = torch.cuda.LongTensor(b).fill_(0)
+    lastmax = torch.gather(Pin, 1, Pin_sorted[:, 0].view(b, 1))
     for k in range(1, n):
-        i += 2 ** Pin_sorted[k - 1]
-        Vin[i] = Pin[Pin_sorted[k - 1]] - Pin[Pin_sorted[k]]
-    return Vin
+        i += 2 ** Pin_sorted[:, k - 1]
+        max2 = torch.gather(Pin, 1, Pin_sorted[:, k].view(b, 1))
+        Vin.scatter_(1, i.view(b, 1), lastmax - max2)
+        lastmax = max2
+    return Vin.T
 
 def get_vin_mcn1(Pin):
     """Generates a Vin vector for bitstreams mutually correlated with ZSCC=-1"""
@@ -114,37 +124,27 @@ def get_vin_mcn1(Pin):
     return np.round(Vin, 12)
 
 def get_vin_mcn1_cuda(Pin):
-    n = Pin.size()[0]
-    Vin = torch.cuda.FloatTensor(2 ** n).fill_(0)
-    Vin[0] = 1 - np.sum(Pin)
-    Pin_sorted = np.argsort(Pin, descending=True)
+    b, n = Pin.shape
+    Vin = torch.cuda.FloatTensor(b, 2 ** n).fill_(0)
+    Vin[0] = 1 - torch.sum(Pin, dim=1)
+    Pin_sorted = torch.argsort(Pin, dim=1, descending=True)
     for k in range(n):
-        i = 2 ** Pin_sorted[k]
-        Vin[i] = Pin[Pin_sorted[k]]
-    return Vin
+        i = 2 ** Pin_sorted[:, k]
+        max_ = torch.gather(Pin, 1, Pin_sorted[:, k]).view(b, 1)
+        Vin.scatter_(1, i.view(b, 1), max_)
+    return Vin.T
 
 def get_vin_mc0(Pin):
     """Generates a Vin vector for bitstreams mutually correlated with ZSCC=0"""
     n = Pin.size
     Bn = B_mat(n)
-    Vin = np.zeros(2 ** n)
-    for i in range(2 ** n):
-        prod = 1
-        for j in range(n):
-            prod *= (Bn[i, j] * Pin[j] + (1 - Bn[i, j]) * (1 - Pin[j]))
-        Vin[i] = prod
-    return Vin
+    return np.prod(Bn * Pin + (1 - Bn) * (1 - Pin), 1)
 
 def get_vin_mc0_cuda(Pin):
-    n = Pin.size()[0]
-    Bn = B_mat(n)
-    Vin = torch.cuda.FloatTensor(2 ** n).fill_(0)
-    for i in range(2 ** n):
-        prod = 1
-        for j in range(n):
-            prod *= (Bn[i, j] * Pin[j] + (1 - Bn[i, j]) * (1 - Pin[j]))
-        Vin[i] = prod
-    return Vin
+    b, n = Pin.shape
+    Bn = B_mat(n, cuda=True)
+    test = torch.prod(Bn * Pin + (1 - Bn) * (1 - Pin), 1)
+    return test
 
 def get_output_corr_mat(Vin, Mf, N, use_zscc=True):
     """Using ZSCC, compute the output correlation matrix given an input correlation matrix,
@@ -215,11 +215,11 @@ def corr_err_cuda(Px, Mf1, Mf2, c1, c2, N=128):
     n1, k1 = np.log2(Mf1.shape).astype(np.uint16)
     k_check, k2 = np.log2(Mf2.shape).astype(np.uint16)
     assert k_check == k1
-    Vc1 = get_vin_cuda(Px, c1)
-    Bk1 = torch.tensor(B_mat(k1).astype(np.float32)).to(device)
-    Bk2 = torch.tensor(B_mat(k2).astype(np.float32)).to(device)
-    Vz1_actual = Mf1.T @ Vc1
-    Vz1_ideal = get_vin_cuda(Bk1.T @ Vz1_actual, c2)
+    Vc1 = get_vin_cuda(Px, c1) #Vc1 old: 2 ** n1 x 1, new: 2 ** n1 x b
+    Bk1 = B_mat(k1, cuda=True)
+    Bk2 = B_mat(k2, cuda=True)
+    Vz1_actual = Mf1.T @ Vc1 #2 ** k1 x b
+    Vz1_ideal = get_vin_cuda((Bk1.T @ Vz1_actual).T, c2)
     return torch.abs(Bk2.T @ Mf2.T @ (Vz1_actual - Vz1_ideal))
 
 def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
@@ -257,26 +257,30 @@ def err_sweep_cuda(N, Mf, vin_type, err_type='e', Mf2=None):
     n, k = np.log2(Mf.shape).astype(np.uint16)
     if Mf2 is not None:
         _, k = np.log2(Mf2.shape).astype(np.uint16)
-    p_arr = torch.cuda.FloatTensor(n).fill_(0)
-    err = torch.cuda.FloatTensor((k, k)).fill_(0)
-    max_err = torch.cuda.FloatTensor((k, k)).fill_(0)
+    batch_size = N-1
+    p_arr = torch.cuda.FloatTensor((N - 1) ** n, n).fill_(0)
+    err = torch.cuda.FloatTensor(k, k).fill_(0)
+    max_err = torch.cuda.FloatTensor(k, k).fill_(0)
     for i in range((N - 1) ** n):
         for j in range(n):
-            p_arr[j] = (np.floor(i / ((N-1) ** j)) % (N - 1) + 1) / N
+            p_arr[i, j] = (np.floor(i / ((N-1) ** j)) % (N - 1) + 1) / N
+    
+    for b in range(((N - 1) ** n / batch_size).astype(np.uint32)):
+        p_range = p_arr[b:(b+batch_size-1), :]
         if err_type == 'e':
             if vin_type == 1:
-                vin = get_vin_mc1_cuda(p_arr)
+                vin = get_vin_mc1_cuda(p_range)
             elif vin_type == -1:
-                if np.sum(p_arr) > 1:
+                if np.sum(p_range) > 1:
                     continue
-                vin = get_vin_mcn1_cuda(p_arr)
+                vin = get_vin_mcn1_cuda(p_range)
             elif vin_type == 0:
-                vin = get_vin_mc0_cuda(p_arr)
+                vin = get_vin_mc0_cuda(p_range)
             else:
                 raise ValueError("Not valid vin type")
             new_err = e_err_cuda(vin, Mf, N, vin_type)
         elif err_type == 'c':
-            new_err = corr_err_cuda(p_arr, Mf, Mf2, vin_type, 0, N=N)
+            new_err = corr_err_cuda(p_range, Mf, Mf2, vin_type, 0, N=N)
         else:
             raise ValueError("Not a valid error type")
         err += new_err
@@ -304,24 +308,7 @@ def e_err(Vin, Mf, N, vin_type):
     return err
 
 def e_err_cuda(Vin, Mf, N, vin_type):
-    _, k = np.log2(Mf.shape).astype(np.uint16)
-    Bk = B_mat(k)
-
-    Vout = Mf.T @ Vin
-    Pout = Bk.T @ Vout
-
-    err = np.zeros((k, k))
-    for i in range(k):
-        for j in range(i):
-            s = np.sum(np.multiply(np.bitwise_and(Bk[:, i], Bk[:, j]), Vout))
-            if vin_type == 1:
-                correct = np.minimum(Pout[i], Pout[j])
-            elif vin_type == -1:
-                correct = np.maximum(Pout[i] + Pout[j] - 1, 0)
-            else:
-                correct = np.floor(Pout[i] * Pout[j] * N + 0.5)/N
-            err[i, j] = 2 * np.abs(s - correct) / (s + correct + 1e-15)
-    return err
+    raise NotImplementedError
 
 def get_func_mat(func, n, k):
     """Compute the truth table matrix for a boolean function with n inputs and k outputs
