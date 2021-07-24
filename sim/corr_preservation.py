@@ -142,9 +142,14 @@ def get_vin_mc0(Pin):
 
 def get_vin_mc0_cuda(Pin):
     b, n = Pin.shape
+    Bn = B_mat(n, cuda=True).repeat(b, 1, 1)
+    Vin = torch.prod(Bn * Pin.unsqueeze(1) + (1 - Bn) * (1 - Pin.unsqueeze(1)), 2)
+    return Vin.T
+
+def get_vin_mc0_cuda_test(Pin):
+    n = Pin.shape[0]
     Bn = B_mat(n, cuda=True)
-    test = torch.prod(Bn * Pin + (1 - Bn) * (1 - Pin), 1)
-    return test
+    return torch.prod(Bn * Pin + (1 - Bn) * (1 - Pin), 1)
 
 def get_output_corr_mat(Vin, Mf, N, use_zscc=True):
     """Using ZSCC, compute the output correlation matrix given an input correlation matrix,
@@ -211,7 +216,7 @@ def corr_err_cuda(Px, Mf1, Mf2, c1, c2, N=128):
         elif c == 0:
             return get_vin_mc0_cuda(Pin)
         else:
-            return get_vin_iterative(Pin, c, N) #If c is not a scalar constant, interpret as a covariance matrix
+            raise NotImplementedError
     n1, k1 = np.log2(Mf1.shape).astype(np.uint16)
     k_check, k2 = np.log2(Mf2.shape).astype(np.uint16)
     assert k_check == k1
@@ -220,6 +225,10 @@ def corr_err_cuda(Px, Mf1, Mf2, c1, c2, N=128):
     Bk2 = B_mat(k2, cuda=True)
     Vz1_actual = Mf1.T @ Vc1 #2 ** k1 x b
     Vz1_ideal = get_vin_cuda((Bk1.T @ Vz1_actual).T, c2)
+    Vz1_ideal_test = torch.zeros_like(Vz1_ideal)
+    for i in range(Px.shape[0]):
+        Vz1_ideal_test[:, i] = get_vin_mc0_cuda_test((Bk1.T @ Vz1_actual).T[i, :])
+    assert torch.all(Vz1_ideal == Vz1_ideal_test)
     return torch.abs(Bk2.T @ Mf2.T @ (Vz1_actual - Vz1_ideal))
 
 def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
@@ -248,8 +257,11 @@ def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
             new_err = corr_err(p_arr, Mf, Mf2, vin_type, 0, N=N)
         else:
             raise ValueError("Not a valid error type")
+        #with open('err_sweep_test.txt', 'a') as outfile:
+        #    outfile.write(str(new_err) + '\n')
         err += new_err
         max_err = np.maximum(max_err, new_err)
+    print(test)
     return max_err, err / (N - 1) ** n
 
 def err_sweep_cuda(N, Mf, vin_type, err_type='e', Mf2=None):
@@ -258,15 +270,16 @@ def err_sweep_cuda(N, Mf, vin_type, err_type='e', Mf2=None):
     if Mf2 is not None:
         _, k = np.log2(Mf2.shape).astype(np.uint16)
     batch_size = N-1
-    p_arr = torch.cuda.FloatTensor((N - 1) ** n, n).fill_(0)
+    nprobs = (N - 1) ** n
+    p_arr = torch.cuda.FloatTensor(nprobs, n).fill_(0)
     err = torch.cuda.FloatTensor(k, k).fill_(0)
     max_err = torch.cuda.FloatTensor(k, k).fill_(0)
-    for i in range((N - 1) ** n):
+    for i in range(nprobs):
         for j in range(n):
             p_arr[i, j] = (np.floor(i / ((N-1) ** j)) % (N - 1) + 1) / N
-    
-    for b in range(((N - 1) ** n / batch_size).astype(np.uint32)):
-        p_range = p_arr[b:(b+batch_size-1), :]
+
+    for b in range((nprobs / batch_size).astype(np.uint32)):
+        p_range = p_arr[b:(b+batch_size), :]
         if err_type == 'e':
             if vin_type == 1:
                 vin = get_vin_mc1_cuda(p_range)
@@ -283,9 +296,12 @@ def err_sweep_cuda(N, Mf, vin_type, err_type='e', Mf2=None):
             new_err = corr_err_cuda(p_range, Mf, Mf2, vin_type, 0, N=N)
         else:
             raise ValueError("Not a valid error type")
-        err += new_err
-        max_err = torch.maximum(max_err, new_err)
-    return max_err, err / (N - 1) ** n
+        #with open('err_sweep_test_2.txt', 'a') as outfile:
+        #    for i in range(batch_size):
+        #        outfile.write(str(new_err[i]) + '\n')
+        err += torch.sum(new_err)
+        max_err = torch.maximum(max_err, torch.max(new_err))
+    return max_err, err / nprobs
 
 def e_err(Vin, Mf, N, vin_type):
     _, k = np.log2(Mf.shape).astype(np.uint16)

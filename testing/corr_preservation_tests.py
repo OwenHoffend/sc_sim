@@ -106,5 +106,5 @@ def test_xor_and_corr_pres():
     Mf1c = torch.tensor(Mf1.astype(np.float32)).to(device)
     Mf2c = torch.tensor(Mf2.astype(np.float32)).to(device)
 
-    #print(err_sweep(16, Mf1, 1, err_type='c', Mf2=Mf2))
-    print(err_sweep_cuda(16, Mf1c, 1, err_type='c', Mf2=Mf2c))
+    #print(err_sweep(4, Mf1, 1, err_type='c', Mf2=Mf2))
+    print(err_sweep_cuda(4, Mf1c, 1, err_type='c', Mf2=Mf2c))
