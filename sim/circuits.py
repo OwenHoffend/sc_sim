@@ -11,6 +11,60 @@ from cv.conv_filters import ConvFilters as cf
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 cpu = torch.device("cpu")
 
+def and_3(a, b, c):
+    o1 = np.bitwise_and(a, b)
+    o2 = np.bitwise_and(b, c)
+    o3 = np.bitwise_and(a, c)
+    return o1, o2, o3
+
+def or_3(a, b, c):
+    o1 = np.bitwise_or(a, b)
+    o2 = np.bitwise_or(b, c)
+    o3 = np.bitwise_or(a, c)
+    return o1, o2, o3
+
+def xor_3(a, b, c):
+    o1 = np.bitwise_xor(a, b)
+    o2 = np.bitwise_xor(b, c)
+    o3 = np.bitwise_xor(a, c)
+    return o1, o2, o3
+
+def passthrough_3(a, b, c):
+    return a, b, c
+
+def xor_4_to_2(x1, x2, x3, x4):
+    o1 = np.bitwise_xor(x1, x2)
+    o2 = np.bitwise_xor(x3, x4)
+    return o1, o2
+
+def mux_1(s, x2, x1):
+    t1 = np.bitwise_and(x1, np.bitwise_not(s))
+    t2 = np.bitwise_and(x2, s)
+    return np.bitwise_or(t1, t2)
+
+def mux_2(s, x4, x3, x2, x1):
+    m1 = mux_1(s, x2, x1)
+    m2 = mux_1(s, x4, x3)
+    return m1, m2
+
+def unbalanced_mux_2(s, x3, x2, x1):
+    return mux_1(s, x1, x2), x3
+
+def robert_cross(s, x4, x3, x2, x1):
+    x1, x2 = xor_4_to_2(x4, x3, x2, x1)
+    return mux_1(s, x1, x2)
+
+def robert_cross_2(s, x8, x7, x6, x5, x4, x3, x2, x1):
+    r1 = robert_cross(s, x8, x7, x6, x5)
+    r2 = robert_cross(s, x4, x3, x2, x1)
+    return r1, r2
+
+def mux_3(s, x6, x5, x4, x3, x2, x1):
+    m1 = mux_1(s, x2, x1)
+    m2 = mux_1(s, x4, x3)
+    m3 = mux_1(s, x6, x5)
+    return m1, m2, m3
+
 def mux_p(x, y, p):
     x_un = np.unpackbits(x)
     y_un = np.unpackbits(y)

@@ -9,13 +9,21 @@ class SC_RNG:
 
     def reset(self):
         self.u = None
+        self.lfsr_init = None
         self.lfsr = None
 
-    def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False):
+    def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False, save_init=False):
         if not keep_rng or self.lfsr is None:
             L = LFSR()
             fpoly = L.get_fpolyList(m=lfsr_sz)[0] #The 0th index holds the lfsr poly with the fewest xor gates
-            L = LFSR(fpoly=fpoly, initstate='random')
+            if save_init:
+                if self.lfsr_init is None:
+                    L = LFSR(fpoly=fpoly, initstate='random')
+                    self.lfsr_init = L.state
+                else:
+                    L = LFSR(fpoly=fpoly, initstate=self.lfsr_init)
+            else:
+                L = LFSR(fpoly=fpoly, initstate='random')
             self.lfsr = np.zeros(n, dtype=np.uint32)
             for i in range(n):
                 L.runKCycle(1)
@@ -37,24 +45,24 @@ class SC_RNG:
         else:
             return np.packbits(self.u <= p) #Apply thresholding, return an efficient bit-packed data structure
 
-    def bs_lfsr(self, n, p, keep_rng=True, inv=False): #Warning: when keep_rng=False, runtime is very slow 
+    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False): #Warning: when keep_rng=False, runtime is very slow 
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
         lfsr_sz = int(np.ceil(np.log2(n)))
-        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv)
+        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init)
         return np.packbits(lfsr_run / ((2**lfsr_sz)-1) <= p)
 
-    def up_to_bp_lfsr(self, n, up, keep_rng=True, inv=False):
+    def up_to_bp_lfsr(self, n, up, keep_rng=True, inv=False, save_init=False):
         """Map a unipolar SN in the range [0, 1] onto a bipolar one on [0.5, 1]"""
         lfsr_sz = int(np.ceil(np.log2(2*n))) #Generate an LFSR that is slightly too large
-        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv)
+        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init)
         msb_mask = 1 << lfsr_sz - 1
         bp = (lfsr_run & np.full((1, n), ~msb_mask)) / (2**(lfsr_sz-1)) <= up
         return np.packbits(bp | (lfsr_run & np.full((1, n), msb_mask) == msb_mask))
 
-    def bs_bp_lfsr(self, n, bp, keep_rng=True, inv=False):
+    def bs_bp_lfsr(self, n, bp, keep_rng=True, inv=False, save_init=False):
         """Generate a bipolar stochastic bitstream via the bs_lfsr method. Can be correlated"""
         up = (bp + 1.0) / 2.0
-        return self.bs_lfsr(n, up, keep_rng=keep_rng, inv=inv)
+        return self.bs_lfsr(n, up, keep_rng=keep_rng, inv=inv, save_init=save_init)
 
     def bs_bp_uniform(self, n, bp, keep_rng=True, inv=False):
         """Generate a bipolar stochastic bitstream via the bs_uniform method."""
@@ -71,17 +79,24 @@ def bs_bernoulli(n, p):
         Faster than bs_uniform if persistent state is not required."""
     return np.packbits(np.random.binomial(1, p, n))
 
+def bs_unpack(bs):
+    try:
+        return np.unpackbits(bs)
+    except TypeError:
+        return bs
+
 def bs_mean(bs, bs_len=None):
     """Evaluate the probability value of a bitstream, taken as the mean value of the bitstream.
         For bitstreams that don't align to byte boundaries, use bs_len to supply the exact bitstream length."""
-    try:
-        unp = np.unpackbits(bs)
-    except TypeError:
-        unp = bs
+    unp = bs_unpack(bs)
     if bs_len != None:
         return np.sum(unp) / bs_len 
     else:
         return np.mean(unp)
+
+def bs_var(bs, bs_len=None):
+    mean = bs_mean(bs, bs_len=bs_len)
+    return np.sum((bs_unpack(bs) - mean) ** 2) / (bs_len ** 2)
 
 def bs_count_cuda(bs):
     """Using a well-known population count algorithm"""
