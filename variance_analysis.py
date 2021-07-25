@@ -15,7 +15,7 @@ def hypersum(K, N, n):
     return result
 
 def plot_variance(func, N, samps):
-    xy_vals = np.array([a / N for a in range(0, N, 4)])
+    xy_vals = np.array([a / N for a in range(N+1)])
     s = xy_vals.size
     var_vals_hyper = np.zeros((s, s))
     var_vals_lfsr = np.zeros((s, s))
@@ -23,26 +23,35 @@ def plot_variance(func, N, samps):
     rng1 = bs.SC_RNG()
     rng2 = bs.SC_RNG()
     for idx, x in enumerate(xy_vals):
+        print("{} out of {}".format(idx, s))
         for idy, y in enumerate(xy_vals):
             #Equations to reproduce fig (a) on Tim's paper (ideal):
             var_vals_hyper[idx][idy] = np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
             var_vals_uniform[idx][idy] = np.sqrt(((x * y) * (1 - (x * y))) / N) #<-- Theoretical AND gate variance, bernoulli
 
-            for _ in range(samps):
-                bsx_lfsr = rng1.bs_lfsr(N, x, keep_rng=False, save_init=True)
-                bsy_lfsr = rng2.bs_lfsr(N, y, keep_rng=False, save_init=True)
+            samp_array = np.zeros(samps)
+            #x_array = np.zeros(samps)
+            #y_array = np.zeros(samps)
+            for i in range(samps):
+                bsx_lfsr = rng1.bs_lfsr(N, x, keep_rng=False, save_init=False)
+                bsy_lfsr = rng2.bs_lfsr(N, y, keep_rng=False, save_init=False)
 
                 #bit-wise variance
-                var_vals_lfsr[idx][idy] += np.sqrt(bs.bs_var(func(bsx_lfsr, bsy_lfsr), bs_len=N))
+                #var_vals_lfsr[idx][idy] += np.sqrt(bs.bs_var(func(bsx_lfsr, bsy_lfsr), bs_len=N))
 
                 #stream-wise variance
-                #TODO
+                samp_array[i] = bs.bs_mean(func(bsx_lfsr, bsy_lfsr), bs_len=N)
+                #x_array[i] = bs.bs_mean(bsx_lfsr, bs_len=N)
+                #y_array[i] = bs.bs_mean(bsy_lfsr, bs_len=N)
 
                 #bsx_uniform = rng.bs_uniform(N, x, keep_rng=False)
                 #bsy_uniform = rng.bs_uniform(N, y, keep_rng=False)
                 #var_vals_uniform[idx][idy] += bs.bs_var(func(bsx_uniform, bsy_uniform), bs_len=N)
 
-            var_vals_lfsr[idx][idy] /= samps
+            var_vals_lfsr[idx][idy] = np.sqrt(np.sum((samp_array - (x*y)) ** 2) / samps)
+            #print(np.sqrt(np.sum((x_array - x) ** 2) / samps))
+            #print(np.sqrt(np.sum((y_array - y) ** 2) / samps))
+            #var_vals_lfsr[idx][idy] /= samps
             #var_vals_uniform[idx][idy] /= samps
     X, Y = np.meshgrid(xy_vals, xy_vals)
     fig = plt.figure()
@@ -62,4 +71,4 @@ def plot_variance(func, N, samps):
     plt.show()
 
 if __name__ == "__main__":
-    plot_variance(np.bitwise_and, 128)
+    plot_variance(np.bitwise_and, 31, 100)

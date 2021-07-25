@@ -12,18 +12,26 @@ class SC_RNG:
         self.lfsr_init = None
         self.lfsr = None
 
+    def _rand_init_nonzero(self, fpoly, lfsr_sz):
+        while True:
+            L = LFSR(fpoly=fpoly, initstate='random')
+            if not np.all(L.state == np.zeros(lfsr_sz)):
+                break
+        return L
+
     def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False, save_init=False):
         if not keep_rng or self.lfsr is None:
             L = LFSR()
             fpoly = L.get_fpolyList(m=lfsr_sz)[0] #The 0th index holds the lfsr poly with the fewest xor gates
             if save_init:
                 if self.lfsr_init is None:
-                    L = LFSR(fpoly=fpoly, initstate='random')
+                    L = self._rand_init_nonzero(fpoly, lfsr_sz)
                     self.lfsr_init = L.state
                 else:
                     L = LFSR(fpoly=fpoly, initstate=self.lfsr_init)
             else:
-                L = LFSR(fpoly=fpoly, initstate='random')
+                L = self._rand_init_nonzero(fpoly, lfsr_sz)
+                assert not np.all(L.state == np.zeros(lfsr_sz))
             self.lfsr = np.zeros(n, dtype=np.uint32)
             for i in range(n):
                 L.runKCycle(1)
