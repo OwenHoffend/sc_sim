@@ -8,30 +8,42 @@ class SC_RNG:
         self.reset()
 
     def reset(self):
+        #Uniform related values
         self.u = None
+
+        #LFSR related values
+        self.lfsr_sz = None
         self.lfsr_init = None
         self.lfsr = None
 
-    def _rand_init_nonzero(self, fpoly, lfsr_sz):
-        while True:
-            L = LFSR(fpoly=fpoly, initstate='random')
-            if not np.all(L.state == np.zeros(lfsr_sz)):
-                break
-        return L
-
-    def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False, save_init=False):
-        if not keep_rng or self.lfsr is None:
+    def _lfsr_get_fpoly(self, lfsr_sz):
+        """If the lfsr size is changed, then get a polynomial for the new size, otherwise use the old one"""
+        if self.lfsr_sz is None or lfsr_sz != self.lfsr_sz:
             L = LFSR()
-            fpoly = L.get_fpolyList(m=lfsr_sz)[0] #The 0th index holds the lfsr poly with the fewest xor gates
+            self.fpoly = L.get_fpolyList(m=lfsr_sz)[0] #The 0th index holds the lfsr poly with the fewest xor gates
+        self.lfsr_sz = lfsr_sz
+        return self.fpoly
+
+    def _lfsr_init_nonzero(self, fpoly, lfsr_sz, init_state):
+        if init_state is None:
+            while True:
+                L = LFSR(fpoly=fpoly, initstate='random')
+                if not np.all(L.state == np.zeros(lfsr_sz)):
+                    break
+            return L
+        return LFSR(fpoly=fpoly, initstate=init_state)
+
+    def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False, save_init=False, init_state=None):
+        if not keep_rng or self.lfsr is None:
+            fpoly = self._lfsr_get_fpoly(lfsr_sz)
             if save_init:
                 if self.lfsr_init is None:
-                    L = self._rand_init_nonzero(fpoly, lfsr_sz)
+                    L = self._lfsr_init_nonzero(fpoly, lfsr_sz, init_state)
                     self.lfsr_init = L.state
                 else:
                     L = LFSR(fpoly=fpoly, initstate=self.lfsr_init)
             else:
-                L = self._rand_init_nonzero(fpoly, lfsr_sz)
-                assert not np.all(L.state == np.zeros(lfsr_sz))
+                L = self._lfsr_init_nonzero(fpoly, lfsr_sz, init_state)
             self.lfsr = np.zeros(n, dtype=np.uint32)
             for i in range(n):
                 L.runKCycle(1)
@@ -41,7 +53,7 @@ class SC_RNG:
             return np.bitwise_not(self.lfsr) & mask
         return self.lfsr
 
-    def bs_uniform(self, n, p, keep_rng=True, inv=False):
+    def bs_uniform(self, n, p, keep_rng=True, inv=False, pack=True):
         """Return a numpy array containing a unipolar stochastic bistream
             with value p based on n numbers drawn from the uniform random distribution on [0, 1).
             A mathematically equivalent alternative to bs_bernoulli. 
@@ -49,15 +61,20 @@ class SC_RNG:
         if not keep_rng or self.u is None:
             self.u = np.random.rand(1, n) #Generate random vector
         if inv:
-            return np.packbits((1 - self.u) <= p)
+            result = (1 - self.u) <= p
         else:
-            return np.packbits(self.u <= p) #Apply thresholding, return an efficient bit-packed data structure
+            result = self.u <= p #Apply thresholding, return an efficient bit-packed data structure
+        if pack:
+            return np.packbits(result)
+        return result
 
-    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False): #Warning: when keep_rng=False, runtime is very slow 
+    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, pack=True): #Warning: when keep_rng=False, runtime is very slow 
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
         lfsr_sz = int(np.ceil(np.log2(n)))
         lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init)
-        return np.packbits(lfsr_run / ((2**lfsr_sz)-1) <= p)
+        if pack:
+            return np.packbits(lfsr_run / ((2**lfsr_sz)-1) <= p)
+        return lfsr_run / ((2**lfsr_sz)-1) <= p
 
     def up_to_bp_lfsr(self, n, up, keep_rng=True, inv=False, save_init=False):
         """Map a unipolar SN in the range [0, 1] onto a bipolar one on [0.5, 1]"""
@@ -77,9 +94,15 @@ class SC_RNG:
         up = (bp + 1.0) / 2.0
         return self.bs_uniform(n, up, keep_rng=keep_rng, inv=inv)
 
+bv_int_cache = {}
 def bit_vec_to_int(vec):
     """Utility function for converting a np array bit vector to an integer"""
-    return vec.dot(2**np.arange(vec.size)[::-1])
+    str_vec = "".join([str(x) for x in vec])
+    if str_vec in bv_int_cache.keys():
+        return bv_int_cache[str_vec]
+    result = vec.dot(2**np.arange(vec.size)[::-1])
+    bv_int_cache[str_vec] = result 
+    return result
 
 def bs_bernoulli(n, p):
     """Return a numpy array containing a unipolar stochastic bitstream

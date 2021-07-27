@@ -18,7 +18,8 @@ def B_mat(n, cuda=False):
         return B_mat_dict[n]
     B = np.zeros((2 ** n, n), dtype=bool)
     for i in range(2 ** n):
-        B[i][:] = bin_array(i, n)[::-1]
+        #B[i][:] = bin_array(i, n)[::-1] #Might cause issues with endianness... right now it's 1 --> [True, False, False]
+        B[i][:] = bin_array(i, n) #The old one is the line above
     if cuda:
         B = torch.tensor(B.astype(np.float32)).to(device)
     B_mat_dict[n] = B
@@ -48,6 +49,14 @@ def Ov(bs_mat):
         for j in range(i):
             Ov[i][j] = np.sum(np.bitwise_and(bs_mat[:, i], bs_mat[:, j]))
     return Ov
+
+def get_actual_vin(bs_mat):
+    N, n = bs_mat.shape
+    Vin = np.zeros(2 ** n)
+    uniques, counts = np.unique(bs_mat, axis=0, return_counts=True)
+    for unq, cnt in zip(uniques, counts):
+        Vin[bs.bit_vec_to_int(unq)] = cnt / N
+    return Vin
 
 def get_vin_iterative(p_vec, cov_mat, N):
     """Performs a conditional-subtract based iterative algorithm to find Vin"""
