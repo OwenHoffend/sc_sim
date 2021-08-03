@@ -51,9 +51,9 @@ def Ov(bs_mat):
     return Ov
 
 def get_actual_vin(bs_mat):
-    N, n = bs_mat.shape
+    n, N = bs_mat.shape
     Vin = np.zeros(2 ** n)
-    uniques, counts = np.unique(bs_mat, axis=0, return_counts=True)
+    uniques, counts = np.unique(bs_mat.T, axis=0, return_counts=True)
     for unq, cnt in zip(uniques, counts):
         Vin[bs.bit_vec_to_int(unq)] = cnt / N
     return Vin

@@ -68,13 +68,17 @@ class SC_RNG:
             return np.packbits(result)
         return result
 
-    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, pack=True): #Warning: when keep_rng=False, runtime is very slow 
+    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, init_state=None, pack=True): #Warning: when keep_rng=False, runtime is very slow 
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
         lfsr_sz = int(np.ceil(np.log2(n)))
-        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init)
+        if lfsr_sz < 4: 
+            raise ValueError("LFSR Size is too small")
+        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init, init_state=init_state)
+        bs = lfsr_run / ((2**lfsr_sz)-1) <= p
+        #assert bs_mean(bs) == p
         if pack:
-            return np.packbits(lfsr_run / ((2**lfsr_sz)-1) <= p)
-        return lfsr_run / ((2**lfsr_sz)-1) <= p
+            return np.packbits(bs)
+        return bs
 
     def up_to_bp_lfsr(self, n, up, keep_rng=True, inv=False, save_init=False):
         """Map a unipolar SN in the range [0, 1] onto a bipolar one on [0.5, 1]"""
