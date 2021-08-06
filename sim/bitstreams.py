@@ -115,19 +115,21 @@ def bs_bernoulli(n, p):
     return np.packbits(np.random.binomial(1, p, n))
 
 def bs_unpack(bs):
+    axis = len(bs.shape) - 1
     try:
-        return np.unpackbits(bs)
+        return np.unpackbits(bs, axis=axis)
     except TypeError:
         return bs
 
 def bs_mean(bs, bs_len=None):
     """Evaluate the probability value of a bitstream, taken as the mean value of the bitstream.
         For bitstreams that don't align to byte boundaries, use bs_len to supply the exact bitstream length."""
+    axis = len(bs.shape) - 1
     unp = bs_unpack(bs)
     if bs_len != None:
-        return np.sum(unp) / bs_len 
+        return np.sum(unp, axis=axis) / bs_len 
     else:
-        return np.mean(unp)
+        return np.mean(unp, axis=axis)
 
 def bs_var(bs, bs_len=None):
     mean = bs_mean(bs, bs_len=bs_len)
