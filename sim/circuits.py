@@ -42,9 +42,21 @@ def mux_1(s, x2, x1):
     t2 = np.bitwise_and(x2, s)
     return np.bitwise_or(t1, t2)
 
+def maj_1(s, x2, x1):
+    a1 = np.bitwise_and(s, x2)
+    a2 = np.bitwise_and(s, x1)
+    a3 = np.bitwise_and(x1, x2)
+    o1 = np.bitwise_or(a1, a2)
+    return np.bitwise_or(o1, a3)
+
 def mux_2(s, x4, x3, x2, x1):
     m1 = mux_1(s, x2, x1)
     m2 = mux_1(s, x4, x3)
+    return m1, m2
+
+def maj_2(s, x4, x3, x2, x1):
+    m1 = maj_1(s, x2, x1)
+    m2 = maj_1(s, x4, x3)
     return m1, m2
 
 def unbalanced_mux_2(s, x3, x2, x1):
