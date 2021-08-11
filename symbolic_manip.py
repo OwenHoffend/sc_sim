@@ -1,5 +1,9 @@
 import re
+import functools
 import copy
+import numpy as np
+
+import sim.corr_preservation as cp
 
 class Polynomial:
     def _flstr_add(self, a, b):
@@ -19,14 +23,13 @@ class Polynomial:
         return _dict
 
     def __init__(self, **kwargs):
-        """Initialize the polynomial based on the poly_string of form: coeff(name)^power"""
         if "poly_string" in kwargs:
             poly_string = kwargs["poly_string"]
-            vars = re.findall(r"(?<=[(])[^)]*(?=[)])", poly_string)
+            terms = re.findall(r"(?<=[(])[^)]*(?=[)])", poly_string)
             coeffs = re.findall(r"[-\d\.]+(?=[(])", poly_string)
 
-            assert len(vars) == len(coeffs)
-            self.poly = self._merge_kv(vars, coeffs, duplicate_func=self._flstr_add)
+            assert len(terms) == len(coeffs)
+            self.poly = self._merge_kv(terms, coeffs, duplicate_func=self._flstr_add)
         if "poly" in kwargs:
             self.poly = kwargs["poly"]
 
@@ -39,15 +42,23 @@ class Polynomial:
                 new[k] = v
         return Polynomial(poly=new)
 
+    def __sub__(self, other):
+        other_neg = copy.copy(other) * Polynomial(poly_string="-1.0(@^1)")
+        return self.__add__(other_neg)
+
     def __mul__(self, other):
         new = {}
-        for k1, c1 in self.poly.items():
-            vars1 = re.findall(r"[^*\W]+(?=[\^][\d]+)|@", k1)
-            exps1 = re.findall(r"(?<=[\^])[\d\.]*", k1)
+        for term1, c1 in self.poly.items():
+            vars1 = re.findall(r"[^*\W]+(?=[\^][\d]+)|@", term1)
+            exps1 = re.findall(r"(?<=[\^])[\d\.]*", term1)
             vdict1 = self._merge_kv(vars1, exps1)
-            for k2, c2 in other.poly.items():
-                vars2 = re.findall(r"[^*\W]+(?=[\^][\d]+)|@", k2)
-                exps2 = re.findall(r"(?<=[\^])[\d\.]*", k2)
+            for term2, c2 in other.poly.items():
+                coeff_mul = float(c1) * float(c2)
+                if coeff_mul == 0:
+                    continue
+                coeff_mul = str(coeff_mul)
+                vars2 = re.findall(r"[^*\W]+(?=[\^][\d]+)|@", term2)
+                exps2 = re.findall(r"(?<=[\^])[\d\.]*", term2)
 
                 merge_dict = copy.copy(vdict1)
                 for var, exp in zip(vars2, exps2):
@@ -67,22 +78,96 @@ class Polynomial:
                 else:
                     merged_var = merged_var[:-1]
                 if merged_var in new:
-                    new[merged_var] = self._flstr_add(new[merged_var], self._flstr_mul(c1, c2))
+                    new[merged_var] = self._flstr_add(new[merged_var], coeff_mul)
                 else:
-                    new[merged_var] = self._flstr_mul(c1, c2)
+                    new[merged_var] = coeff_mul
         return Polynomial(poly=new)
 
-if __name__ == "__main__":
+    def __pow__(self, other):
+        if other > 1:
+            return functools.reduce(lambda a, b: a * b, [self for _ in range(other)])
+        return copy.copy(self)
 
+    def __repr__(self):
+        strrep = ""
+        first = True
+        for var, coeff in self.poly.items():
+            if not first and float(coeff) < 0.0:
+                strrep = strrep[:-1] #Trim the '+' symbol
+            strrep += "{}({})+".format(coeff, var)
+            first = False
+        strrep = strrep[:-1]
+        return strrep
+
+def scalar_mat_poly(mat):
+    m, n = mat.shape
+    out = np.zeros((m, n), dtype=object)
+    for i in range(m):
+        for j in range(n):
+            out[i, j] = Polynomial(poly_string="{}(@^1)".format(mat[i,j]))
+    return out
+
+def vin_poly_bernoulli(nvars):
+    dim = 2 ** nvars
+    Bn = cp.B_mat(nvars)
+    vin = np.zeros((dim,), dtype=object)
+    pos_polys = [Polynomial(poly_string="1.0(p{}^1)".format(i)) for i in range(nvars)]
+    neg_polys = [Polynomial(poly_string="1.0(@^1)-1.0(p{}^1)".format(i)) for i in range(nvars)]
+    for i in range(dim):
+        row_poly = [pos_polys[j] if Bn[i][j] else neg_polys[j] for j in range(nvars)]
+        vin[i] = functools.reduce(lambda a, b: a*b, row_poly)
+    return vin
+
+def vin_covmat_bernoulli(nvars):
+    dim = 2 ** nvars
+    mat = np.zeros((dim, dim), dtype=object)
+    vin = vin_poly_bernoulli(nvars)
+    _one = Polynomial(poly_string="1.0(@^1)")
+    _zero = Polynomial(poly_string="0.0(@^1)")
+    for i in range(dim):
+        for j in range(dim):
+            if i == j:
+                mat[i, i] = vin[i] * (_one - vin[i])
+            else:
+                mat[i, j] = vin[i] * (_zero - vin[j])
+    return mat
+
+if __name__ == "__main__":
     #Sum test:
     #test_poly = Polynomial(poly_string="0.5(x1^2*x2^2)-1.0(x1^1*x2^1)+1(x1^2*x2^2)+1(@)")
     #test_poly2 = Polynomial(poly_string="0.3(x1^1*x2^1)-5(@)")
     #res = test_poly + test_poly2
 
+    #Sub test:
+    #test_poly = Polynomial(poly_string="0.5(x1^1)+0.3(x1^2*x2^1)")
+    #test_poly2 = Polynomial(poly_string="0.1(x1^1)-5.0(@^1)")
+    #print(test_poly - test_poly2)
+
     #Mul test:
-    test_poly = Polynomial(poly_string="0.5(x1^1)+2(@^1)")
-    test_poly2 = Polynomial(poly_string="0.25(x1^2*x2^1)+0.5(x1^1)+6(@^1)")
-    res = test_poly * test_poly2
-    print(test_poly.poly)
-    print(test_poly2.poly)
-    print(res.poly)
+    #test_poly = Polynomial(poly_string="0.5(a^1)+2(@^1)")
+    #test_poly2 = Polynomial(poly_string="0.25(a^2*b^1)+0.5(a^1)+6(@^1)")
+    #res = test_poly2 ** 2
+    #print(test_poly.poly)
+    #print(test_poly2.poly)
+    #print(res.poly)
+
+    #Numpy multiplication test
+    #test_vec = np.array([[test_poly, test_poly2]], dtype=object)
+    #result = test_vec @ test_vec.T
+    #print(result[0,0].poly)
+
+    #vin_poly_bernoulli test
+    #mat = vin_poly_bernoulli(4)
+    #print(mat)
+
+    #vin_covmat_bernoulli test
+    mat = vin_covmat_bernoulli(2)
+    print(mat)
+
+    #Test matrix product
+    #mat = np.array([
+    #    [1.0, 0],
+    #    [0.5, -0.3]
+    #])
+    #test = scalar_mat_poly(mat) @ vin_poly_bernoulli(1)
+    #print(test)

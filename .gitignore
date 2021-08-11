@@ -134,3 +134,4 @@ dmypy.json
 *.jpg
 .prof_stats
 profiling_stats.txt
+symbolic_manip_old.py

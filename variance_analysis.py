@@ -5,6 +5,7 @@ from matplotlib import cm
 import sim.circuits as cir
 import sim.bitstreams as bs
 import sim.corr_preservation as cp
+import symbolic_manip as sm
 from testing.test_main import profile
 
 def hypersum(K, N, n):
@@ -16,6 +17,23 @@ def hypersum(K, N, n):
         result += ((K - k) / (N - n)) * rv.pmf(k)
     return result
 
+def maj_mux_var_out():
+    b2 = cp.B_mat(2)
+    mux_mf = cp.reduce_func_mat(
+        cp.get_func_mat(cir.mux_2, 5, 2), 4, 0.5
+    )
+    A_mux = sm.scalar_mat_poly(mux_mf @ b2) 
+    maj_mf = cp.reduce_func_mat(
+        cp.get_func_mat(cir.maj_2, 5, 2), 4, 0.5
+    )
+    A_maj = sm.scalar_mat_poly(maj_mf @ b2)
+    vin_mat = sm.vin_covmat_bernoulli(4)
+    print(A_mux.T @ vin_mat @ A_mux)
+    print(A_maj.T @ vin_mat @ A_maj)
+
+def var2(a, b, N):
+    return (a * b * (1-a) * (1-b))/(N-1)
+
 @profile
 def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_predicted_cov=None):
     """Compare the actual output covariance matrix for a set of lfsr-generated input bitstreams
@@ -23,30 +41,34 @@ def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_pred
     Mf = cp.get_func_mat(func, num_inputs, num_outputs)
     rng = bs.SC_RNG()
     bs_mat = np.zeros((num_inputs, N), dtype=np.uint8)
+    Pxs = np.zeros((samps, num_inputs))
     vins = np.zeros((samps, 2 ** num_inputs))
     Pzs = np.zeros((samps, num_outputs))
 
     #Generate a set of vins
     for i in range(samps):
         for j in range(num_inputs):
-            bs_mat[j, :] = rng.bs_lfsr(N, p_arr[j], keep_rng=False, pack=False)
+            #bs_mat[j, :] = rng.bs_lfsr(N, p_arr[j], keep_rng=False, pack=False)
+            bs_mat[j, :] = rng.bs_uniform(N, p_arr[j], keep_rng=False, pack=False)
         vins[i, :] = cp.get_actual_vin(bs_mat)
         bs_mat_out = np.vstack(func(*np.split(bs_mat, bs_mat.shape[0], axis=0))[::-1])
+        Pxs[i, :] = bs.bs_mean(bs_mat, bs_len=N)
         Pzs[i, :] = bs.bs_mean(bs_mat_out, bs_len=N)
 
         #Assert that we get the correct p_arr back out (just a test)
-        assert np.all(np.isclose(p_arr, cp.B_mat(num_inputs).T @ vins[i, :]))
+        #assert np.all(np.isclose(p_arr, cp.B_mat(num_inputs).T @ vins[i, :]))
 
-    in_cov = np.cov(vins.T)
+    px_cov = np.cov(Pxs.T)
+    vin_cov = np.cov(vins.T)
     Bk = cp.B_mat(num_outputs)
     A_mat = Bk.T @ Mf.T
-    ideal_out_cov = A_mat @ in_cov @ A_mat.T #This is the equation we are testing
+    ideal_out_cov = A_mat @ vin_cov @ A_mat.T #This is the equation we are testing
     out_cov = np.cov(Pzs.T)
 
-    print(Mf)
     print("'A' Matrix: {}".format(A_mat))
     np.set_printoptions(linewidth=np.inf)
-    print("In cov: \n {}".format(in_cov))
+    print("Px cov: \n {}".format(px_cov)) #--> About 0 (all entries) for independent bitstreams, as expected
+    print("Vin cov: \n {}".format(vin_cov))
 
     print("Ideal out cov: \n {}".format(ideal_out_cov))
     print("Actual out cov: \n {}".format(out_cov))
@@ -149,17 +171,47 @@ def hyper_and(x, y, N):
     return np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
 
 if __name__ == "__main__":
+
+    maj_mux_var_out()
+
     #plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)
     #print(test_hyper_vin(2047, 1000))
-    mux = lambda x, y, z: np.bitwise_or(np.bitwise_and(x, z), np.bitwise_and(y, np.bitwise_not(z)))
-    func = lambda x, y: (np.bitwise_and(x, y), np.bitwise_or(x, y))
-    lfsr_cov_mat_compare(func, 2, 2, np.array([5/15, 10/15]), 15, 100)
+    #mux = lambda x, y, z: np.bitwise_or(np.bitwise_and(x, z), np.bitwise_and(y, np.bitwise_not(z)))
+    #func = lambda x, y: (np.bitwise_and(x, y), np.bitwise_or(x, y))
+    #lfsr_cov_mat_compare(mux, 3, 1, np.array([127/255, 63/255, 101/255]), 255, 1000)
 
- #[[ 4.63114538e-03 -2.98995073e-03 -2.38325339e-03  7.42058739e-04 -1.80727077e-03  1.66076119e-04 -4.40621218e-04  2.08181587e-03]
- #[-2.98995073e-03  5.33694685e-03  8.05413697e-04 -3.15240982e-03  2.02769788e-04 -2.54976591e-03  1.98176724e-03  3.65228878e-04]
- #[-2.38325339e-03  8.05413697e-04  4.30910073e-03 -2.73126104e-03 -4.69850807e-04  2.04769050e-03 -1.45599653e-03 -1.21843162e-04]
- #[ 7.42058739e-04 -3.15240982e-03 -2.73126104e-03  5.14161212e-03  2.07435179e-03  3.35999289e-04 -8.51494927e-05 -2.32520159e-03]
- #[-1.80727077e-03  2.02769788e-04 -4.69850807e-04  2.07435179e-03  3.24468340e-03 -1.64018242e-03 -9.67561823e-04 -6.36939161e-04]
- #[ 1.66076119e-04 -2.54976591e-03  2.04769050e-03  3.35999289e-04 -1.64018242e-03  4.02387221e-03 -5.73584203e-04 -1.81010559e-03]
- #[-4.40621218e-04  1.98176724e-03 -1.45599653e-03 -8.51494927e-05 -9.67561823e-04 -5.73584203e-04  2.86417957e-03 -1.32303355e-03]
- #[ 2.08181587e-03  3.65228878e-04 -1.21843162e-04 -2.32520159e-03 -6.36939161e-04 -1.81010559e-03 -1.32303355e-03  3.77007830e-03]]
+    #test
+    #N = 255
+    #x = 127/255
+    #y = 63/255
+    #z = 101/255
+
+    #print(-(1/N) * ((1-x) * y * z) * ((1-x) * (1-y) * z))
+
+    #var_xy = var2(x, y, N)
+    #var_yz = var2(y, z, N)
+    #var_xz = var2(x, z, N)
+    #var_xyz = (1/(N-1)) * x * y * z * (1 - x) * (1 - y) * (1 - z) #--> Naiive extension of the principle that worked for 2 variables
+    #var_xyz = (1/(N-1)) * x * y * (1 - (x*y)) * z * (1-z) #--> Solution if setting n=NE[xy]
+    #var_xyz = (1/(N-1)) * z * y * (1 - (z*y)) * x * (1-x) #--> Solution if setting n=NE[zy] (most optimistic)
+
+    #var_xyz = (1/(N-1)) * (1-z) * (1-y) * (1 - ((1-z)*(1-y))) * x * (1-x)
+    #var_xyz = (1/(N-1)) * (1-x) * (1-z) * (1 - ((1-z)*(1-x))) * y * (1-y)
+
+    #var_xyz = (1/(N-1)) * (z ** 2) * x * y * (1-x) * (1-y) #--> Application of the equation for var(X1*X2*...*Xn) (asymmetric result)
+
+    #def vt(x, y, z):
+    #    return (1/(N-1)) * (z ** 2) * x * y * (1-x) * (1-y)
+    #var_xyz = max(vt(x, y, z), vt(y, x, z), vt(z, y, x))  #--> Averaging of all 3 asymmetrical results
+
+    #print(var_xyz)
+
+#20k
+ #[[ 1.76718292e-05 -1.36172425e-05 -1.24318284e-05  8.37724162e-06 -8.89096819e-06  4.83638146e-06  3.65096732e-06  4.03619412e-07]
+ #[-1.36172425e-05  1.37067732e-05  8.41409637e-06 -8.50362703e-06  4.86349423e-06 -4.95302489e-06  3.39651892e-07 -2.50121233e-07]
+ #[-1.24318284e-05  8.41409637e-06  1.24927417e-05 -8.47500968e-06  3.71572058e-06  3.02011410e-07 -3.77663389e-06 -2.41098099e-07]
+ #[ 8.37724162e-06 -8.50362703e-06 -8.47500968e-06  8.60139508e-06  3.11753381e-07 -1.85367977e-07 -2.13985324e-07  8.75999202e-08]
+ #[-8.89096819e-06  4.86349423e-06  3.71572058e-06  3.11753381e-07  9.00159964e-06 -4.97412568e-06 -3.82635203e-06 -2.01121936e-07]
+ #[ 4.83638146e-06 -4.95302489e-06  3.02011410e-07 -1.85367977e-07 -4.97412568e-06  5.09076911e-06 -1.64267191e-07  4.76237576e-08]
+ #[ 3.65096732e-06  3.39651892e-07 -3.77663389e-06 -2.13985324e-07 -3.82635203e-06 -1.64267191e-07  3.95201859e-06  3.86006228e-08]
+ #[ 4.03619412e-07 -2.50121233e-07 -2.41098099e-07  8.75999202e-08 -2.01121936e-07  4.76237576e-08  3.86006228e-08  1.14897556e-07]]
