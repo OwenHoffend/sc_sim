@@ -17,19 +17,21 @@ def hypersum(K, N, n):
         result += ((K - k) / (N - n)) * rv.pmf(k)
     return result
 
+def symbolic_cov_mat_bernoulli(Mf, num_inputs, num_ouputs):
+    Bk = cp.B_mat(num_ouputs)
+    vin_mat = sm.vin_covmat_bernoulli(num_inputs)
+    A_mat = sm.scalar_mat_poly((Mf @ Bk) * 1)
+    return A_mat.T @ vin_mat @ A_mat
+
 def maj_mux_var_out():
-    b2 = cp.B_mat(2)
     mux_mf = cp.reduce_func_mat(
         cp.get_func_mat(cir.mux_2, 5, 2), 4, 0.5
     )
-    A_mux = sm.scalar_mat_poly(mux_mf @ b2) 
     maj_mf = cp.reduce_func_mat(
         cp.get_func_mat(cir.maj_2, 5, 2), 4, 0.5
     )
-    A_maj = sm.scalar_mat_poly(maj_mf @ b2)
-    vin_mat = sm.vin_covmat_bernoulli(4)
-    print(A_mux.T @ vin_mat @ A_mux)
-    print(A_maj.T @ vin_mat @ A_maj)
+    print(symbolic_cov_mat_bernoulli(mux_mf, 4, 2))
+    print(symbolic_cov_mat_bernoulli(maj_mf, 4, 2))
 
 def var2(a, b, N):
     return (a * b * (1-a) * (1-b))/(N-1)
@@ -171,7 +173,8 @@ def hyper_and(x, y, N):
     return np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
 
 if __name__ == "__main__":
-
+    #func = lambda x,y: np.bitwise_not(np.bitwise_xor(x, y))
+    #print(symbolic_cov_mat_bernoulli(cp.get_func_mat(func, 2, 1), 2, 1))
     maj_mux_var_out()
 
     #plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)

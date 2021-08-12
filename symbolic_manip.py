@@ -9,18 +9,15 @@ class Polynomial:
     def _flstr_add(self, a, b):
         return str(float(a) + float(b))
 
+    def _istr_add(self, a, b):
+        return str(int(a) + int(b))
+
     def _flstr_mul(self, a, b):
         return str(float(a) * float(b))
 
-    def _merge_kv(self, keys, vals, duplicate_func=None):
-        _dict = {}
+    def _merge_kv(self, keys, vals):
         assert len(keys) == len(vals)
-        for k, v in zip(keys, vals):
-            if duplicate_func is not None and v in _dict:
-                _dict[k] = duplicate_func(_dict[k], v)
-            else:
-                _dict[k] = v
-        return _dict
+        return {k : v for k, v in zip(keys, vals)}
 
     def __init__(self, **kwargs):
         if "poly_string" in kwargs:
@@ -29,9 +26,33 @@ class Polynomial:
             coeffs = re.findall(r"[-\d\.]+(?=[(])", poly_string)
 
             assert len(terms) == len(coeffs)
-            self.poly = self._merge_kv(terms, coeffs, duplicate_func=self._flstr_add)
+            self.poly = self._merge_kv(terms, coeffs)
         if "poly" in kwargs:
             self.poly = kwargs["poly"]
+            terms = list(self.poly.keys())
+            coeffs = list(self.poly.values())
+
+        #Duplicate term reduction
+        new = {}
+        skips = []
+        for i in range(len(self.poly)):
+            if i in skips:
+                continue
+            term1 = terms[i]
+            c1 = coeffs[i]
+            var_set1 = set(re.findall(r"[^\*\s]+(?=[\*])*", term1))
+            for j in range(i+1, len(self.poly)):
+                term2 = terms[j]
+                c2 = coeffs[j]
+                var_set2 = set(re.findall(r"[^\*\s]+(?=[\*])*", term2))
+                if var_set1 == var_set2:
+                    skips.append(j)
+                    c1 = self._flstr_add(c1, c2)
+            if float(c1) != 0:
+                new[term1] = c1
+            if new == {}: #Gaurd against empty polynomials
+                new["@^1"] = "0.0"
+        self.poly = new
 
     def __add__(self, other):
         new = copy.copy(self.poly)
@@ -63,7 +84,7 @@ class Polynomial:
                 merge_dict = copy.copy(vdict1)
                 for var, exp in zip(vars2, exps2):
                     if var in merge_dict:
-                        merge_dict[var] = self._flstr_add(merge_dict[var], exp)
+                        merge_dict[var] = self._istr_add(merge_dict[var], exp)
                     else:
                         merge_dict[var] = exp
 
@@ -133,6 +154,11 @@ def vin_covmat_bernoulli(nvars):
     return mat
 
 if __name__ == "__main__":
+    pass
+    #Polynomial creation test:
+    #test_poly = Polynomial(poly_string="0.5(x1^1*x2^2)-0.5(x2^2*x1^1)+1.0(x2^2)")
+    #print(test_poly.poly)
+
     #Sum test:
     #test_poly = Polynomial(poly_string="0.5(x1^2*x2^2)-1.0(x1^1*x2^1)+1(x1^2*x2^2)+1(@)")
     #test_poly2 = Polynomial(poly_string="0.3(x1^1*x2^1)-5(@)")
@@ -151,6 +177,12 @@ if __name__ == "__main__":
     #print(test_poly2.poly)
     #print(res.poly)
 
+    #Second mul test:
+    #test_poly = Polynomial(poly_string="1.0(a^1)+1.0(b^1)")
+    #test_poly2 = Polynomial(poly_string="1.0(b^1)+1.0(a^1)")
+    #res = test_poly * test_poly2
+    #print(res.poly)
+
     #Numpy multiplication test
     #test_vec = np.array([[test_poly, test_poly2]], dtype=object)
     #result = test_vec @ test_vec.T
@@ -161,8 +193,8 @@ if __name__ == "__main__":
     #print(mat)
 
     #vin_covmat_bernoulli test
-    mat = vin_covmat_bernoulli(2)
-    print(mat)
+    #mat = vin_covmat_bernoulli(2)
+    #print(mat)
 
     #Test matrix product
     #mat = np.array([
