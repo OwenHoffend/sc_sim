@@ -24,14 +24,18 @@ def symbolic_cov_mat_bernoulli(Mf, num_inputs, num_ouputs):
     return A_mat.T @ vin_mat @ A_mat
 
 def maj_mux_var_out():
-    mux_mf = cp.reduce_func_mat(
-        cp.get_func_mat(cir.mux_2, 5, 2), 4, 0.5
-    )
-    maj_mf = cp.reduce_func_mat(
-        cp.get_func_mat(cir.maj_2, 5, 2), 4, 0.5
-    )
-    print(symbolic_cov_mat_bernoulli(mux_mf, 4, 2))
-    print(symbolic_cov_mat_bernoulli(maj_mf, 4, 2))
+    mux_mf = cp.get_func_mat(cir.mux_2, 5, 2)
+    mux_poly = symbolic_cov_mat_bernoulli(mux_mf, 5, 2)
+    sm.mat_sub_scalar(mux_poly, "p0", 0.5)
+    print(sm.mat_to_latex(mux_poly))
+
+    maj_mf = cp.get_func_mat(cir.maj_2, 5, 2)
+    maj_poly = symbolic_cov_mat_bernoulli(maj_mf, 5, 2)
+    sm.mat_sub_scalar(maj_poly, "p0", 0.5)
+    print(sm.mat_to_latex(maj_poly))
+
+    cov_diff = maj_poly[1,0] - mux_poly[1,0]
+    print(cov_diff.get_latex())
 
 def var2(a, b, N):
     return (a * b * (1-a) * (1-b))/(N-1)
@@ -173,8 +177,8 @@ def hyper_and(x, y, N):
     return np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
 
 if __name__ == "__main__":
-    #func = lambda x,y: np.bitwise_not(np.bitwise_xor(x, y))
-    #print(symbolic_cov_mat_bernoulli(cp.get_func_mat(func, 2, 1), 2, 1))
+    #and_cov = symbolic_cov_mat_bernoulli(cp.get_func_mat(np.bitwise_and, 2, 1), 2, 1)
+    #print(sm.mat_sub_scalar(and_cov, 'p0', 0.5))
     maj_mux_var_out()
 
     #plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)

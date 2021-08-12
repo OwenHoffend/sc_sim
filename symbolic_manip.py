@@ -19,6 +19,28 @@ class Polynomial:
         assert len(keys) == len(vals)
         return {k : v for k, v in zip(keys, vals)}
 
+    def _dup_term_reduce(self, terms, coeffs):
+        new = {}
+        skips = []
+        for i in range(len(terms)):
+            if i in skips:
+                continue
+            term1 = terms[i]
+            c1 = coeffs[i]
+            var_set1 = set(re.findall(r"[^\*\s]+(?=[\*])*", term1))
+            for j in range(i+1, len(terms)):
+                term2 = terms[j]
+                c2 = coeffs[j]
+                var_set2 = set(re.findall(r"[^\*\s]+(?=[\*])*", term2))
+                if var_set1 == var_set2:
+                    skips.append(j)
+                    c1 = self._flstr_add(c1, c2)
+            if float(c1) != 0:
+                new[term1] = c1
+        if new == {}: #Gaurd against empty polynomials
+            new["@^1"] = "0.0"
+        self.poly = new
+
     def __init__(self, **kwargs):
         if "poly_string" in kwargs:
             poly_string = kwargs["poly_string"]
@@ -33,26 +55,7 @@ class Polynomial:
             coeffs = list(self.poly.values())
 
         #Duplicate term reduction
-        new = {}
-        skips = []
-        for i in range(len(self.poly)):
-            if i in skips:
-                continue
-            term1 = terms[i]
-            c1 = coeffs[i]
-            var_set1 = set(re.findall(r"[^\*\s]+(?=[\*])*", term1))
-            for j in range(i+1, len(self.poly)):
-                term2 = terms[j]
-                c2 = coeffs[j]
-                var_set2 = set(re.findall(r"[^\*\s]+(?=[\*])*", term2))
-                if var_set1 == var_set2:
-                    skips.append(j)
-                    c1 = self._flstr_add(c1, c2)
-            if float(c1) != 0:
-                new[term1] = c1
-            if new == {}: #Gaurd against empty polynomials
-                new["@^1"] = "0.0"
-        self.poly = new
+        self._dup_term_reduce(terms, coeffs)
 
     def __add__(self, other):
         new = copy.copy(self.poly)
@@ -112,13 +115,46 @@ class Polynomial:
     def __repr__(self):
         strrep = ""
         first = True
-        for var, coeff in self.poly.items():
+        for term, coeff in self.poly.items():
             if not first and float(coeff) < 0.0:
                 strrep = strrep[:-1] #Trim the '+' symbol
-            strrep += "{}({})+".format(coeff, var)
+            strrep += "{}({})+".format(coeff, term)
             first = False
         strrep = strrep[:-1]
         return strrep
+
+    #Substitute all instances of a variable with a scalar, then reduce
+    def sub_scalar(self, var_str, scalar):
+        terms = []
+        coeffs = []
+        for term, coeff in self.poly.items():
+            if var_str in term:
+                final_term = re.sub(r"{}\^[\d\.]+[\*]{}".format(var_str, "{0,1}"), '', term)
+                #.format() eats '{' '}' characters, so the second sub is a hack to get those into the regex again
+                terms.append(re.sub(r"\*$", '', final_term))
+                _exp = re.findall(r"(?<={}[\^])[\d\.]+".format(var_str), term)
+                assert len(_exp) == 1
+                coeffs.append(str(float(coeff) * (scalar ** int(_exp[0]))))
+            else:
+                terms.append(term)
+                coeffs.append(coeff)
+        if terms == ['']:
+            terms = ['@^1']
+        self._dup_term_reduce(terms, coeffs)
+
+    def get_latex(self):
+        latex_str = ""
+        for term, coeff in self.poly.items():
+            _term = re.sub(r"\*|\(|\)|\@|\^1|\.0", '', term) #Remove extra syntax
+            _term = re.sub(r"(?<=[a-zA-Z])[\d]+", r"_\g<0>", _term) #Add subscripting to variables
+            _coeff = re.sub(r"\.0", '', coeff)
+            if float(coeff) < 0:
+                latex_str = latex_str[:-1]
+            if abs(float(coeff)) == 1 and _term != '':
+                _coeff = _coeff[:-1]
+            latex_str += _coeff + _term + "+"
+        latex_str = latex_str[:-1]
+        return latex_str
 
 def scalar_mat_poly(mat):
     m, n = mat.shape
@@ -153,11 +189,37 @@ def vin_covmat_bernoulli(nvars):
                 mat[i, j] = vin[i] * (_zero - vin[j])
     return mat
 
+def mat_sub_scalar(np_mat, var_str, scalar):
+    m, n = np_mat.shape
+    for i in range(m):
+        for j in range(n):
+            np_mat[i,j].sub_scalar(var_str, scalar)
+    return np_mat
+
+def mat_to_latex(np_mat):
+    m, n = np_mat.shape
+    latex_str = "\\begin{bmatrix}"
+    for i in range(m):
+        for j in range(n):
+            latex_str += np_mat[i,j].get_latex()
+            if j < n - 1:
+                latex_str += ' & '
+        if i < m-1:
+            latex_str += "\\\\"
+    latex_str += "\\end{bmatrix}"
+    return latex_str
+
 if __name__ == "__main__":
     pass
     #Polynomial creation test:
     #test_poly = Polynomial(poly_string="0.5(x1^1*x2^2)-0.5(x2^2*x1^1)+1.0(x2^2)")
     #print(test_poly.poly)
+
+    #Test zero multiplication
+    #test_poly = Polynomial(poly_string="0.0(@^1)")
+    #test_poly2 = Polynomial(poly_string="0.5(x1^1)")
+    #res = test_poly * test_poly2
+    #print(res.poly)
 
     #Sum test:
     #test_poly = Polynomial(poly_string="0.5(x1^2*x2^2)-1.0(x1^1*x2^1)+1(x1^2*x2^2)+1(@)")
@@ -183,6 +245,20 @@ if __name__ == "__main__":
     #res = test_poly * test_poly2
     #print(res.poly)
 
+    #sub_scalar test:
+    #test_poly = Polynomial(poly_string="1.0(x1^1*x2^2)+1.0(x2^1*x1^1)")
+    #test_poly.sub_scalar("x2", 0.5)
+    #print(test_poly.poly)
+
+    #sub_scalar test2:
+    #test_poly = Polynomial(poly_string="0.5(x1^1*x2^2)-0.5(x2^2*x1^1)+1.0(x2^2)")
+    #test_poly.sub_scalar("x2", 0.5)
+    #print(test_poly.poly)
+
+    #get_latex test:
+    #test_poly = Polynomial(poly_string="0.5(x1^1*x2^2)-0.5(x2^2*x1^1)+1.0(x2^2)")
+    #print(test_poly.get_latex())
+
     #Numpy multiplication test
     #test_vec = np.array([[test_poly, test_poly2]], dtype=object)
     #result = test_vec @ test_vec.T
@@ -202,4 +278,4 @@ if __name__ == "__main__":
     #    [0.5, -0.3]
     #])
     #test = scalar_mat_poly(mat) @ vin_poly_bernoulli(1)
-    #print(test)
+    #print(mat_to_latex(np.expand_dims(test, axis=1)))

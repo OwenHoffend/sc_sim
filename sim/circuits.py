@@ -37,12 +37,22 @@ def xor_4_to_2(x1, x2, x3, x4):
     o2 = np.bitwise_xor(x3, x4)
     return o1, o2
 
-def mux_1(s, x2, x1):
+def and_4_to_2(x1, x2, x3, x4):
+    o1 = np.bitwise_and(x1, x2)
+    o2 = np.bitwise_and(x3, x4)
+    return o1, o2
+
+def and_3_to_2(x1, x2, x3):
+    o1 = np.bitwise_and(x1, x2)
+    o2 = np.bitwise_and(x2, x3)
+    return o1, o2
+
+def mux_1(s, x1, x2):
     t1 = np.bitwise_and(x1, np.bitwise_not(s))
     t2 = np.bitwise_and(x2, s)
     return np.bitwise_or(t1, t2)
 
-def maj_1(s, x2, x1):
+def maj_1(s, x1, x2):
     a1 = np.bitwise_and(s, x2)
     a2 = np.bitwise_and(s, x1)
     a3 = np.bitwise_and(x1, x2)
