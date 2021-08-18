@@ -24,7 +24,7 @@ def symbolic_cov_mat_bernoulli(Mf, num_inputs, num_ouputs):
     return A_mat.T @ vin_mat @ A_mat
 
 def maj_mux_var_out():
-    mux_mf = cp.get_func_mat(cir.mux_2, 5, 2)
+    mux_mf = cp.get_func_mat(cir.mux_maj, 5, 2)
     mux_poly = symbolic_cov_mat_bernoulli(mux_mf, 5, 2)
     sm.mat_sub_scalar(mux_poly, "p0", 0.5)
     print(sm.mat_to_latex(mux_poly))
@@ -81,6 +81,38 @@ def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_pred
     print(np.all(np.isclose(ideal_out_cov, out_cov)))
     if eq_predicted_cov is not None:
         print("Eq-predicted cov: \n {}".format(eq_predicted_cov(*p_arr, N) ** 2))
+
+def mux_cov(p1, p2, p3, p4):
+    return 0.25*p1*p3-0.25*p2*p3-0.25*p1*p4+0.25*p2*p4
+
+def maj_cov(p1, p2, p3, p4):
+    return p1*p2*p3*p4-0.5*p2*p3*p4-0.5*p1*p3*p4-0.5*p1*p2*p4+0.25*p2*p4+0.25*p1*p4-0.5*p1*p2*p3+0.25*p2*p3+0.25*p1*p3
+
+def plot_mux_maj():
+    xy_vals = np.linspace(0, 1, 100)
+    mux = np.zeros((100, 100))
+    maj = np.zeros((100, 100))
+    for idx, x in enumerate(xy_vals):
+        for idy, y in enumerate(xy_vals):
+            mux[idx][idy] = mux_cov(0.5, x, 0.5, y)
+            maj[idx][idy] = maj_cov(0.5, x, 0.5, y)
+
+    X, Y = np.meshgrid(xy_vals, xy_vals)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    surf = ax.plot_surface(X, Y, mux, label="mux", color='r')
+    surf3 = ax.plot_surface(X, Y, maj, label="maj", color='b')
+
+    ax.set_xlabel('p2 Input Value')
+    ax.set_ylabel('p4 Input Value')
+    ax.set_zlabel('Covariance')
+    maxval = np.maximum(np.max(mux), np.max(maj))
+    minval = np.minimum(np.min(mux), np.min(maj))
+    ax.set_zlim(minval, maxval)
+    #fig.colorbar(surf , shrink=0.5, aspect=5)
+    plt.title("Covariance vs. Input p2 and p4 Values")
+    plt.show()
 
 @profile
 def plot_variance(func, ideal_sc_func, uniform_func, hyper_func, N, samps):
@@ -177,9 +209,26 @@ def hyper_and(x, y, N):
     return np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
 
 if __name__ == "__main__":
-    #and_cov = symbolic_cov_mat_bernoulli(cp.get_func_mat(np.bitwise_and, 2, 1), 2, 1)
+    #vin = np.expand_dims(sm.vin_poly_bernoulli(2), axis=1)
+    #print(sm.mat_to_latex(vin))
+    #kvin = sm.vin_covmat_bernoulli(2)
+    #print(sm.mat_to_latex(kvin))
+    #xnor = lambda x, y: np.bitwise_not(np.bitwise_xor(x, y))
+    #xnor_var = symbolic_cov_mat_bernoulli(cp.get_func_mat(xnor, 2, 1), 2, 1)
+    #print(sm.mat_to_latex(xnor_var))
+
+    #and_cov = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.and_6_to_2, 6, 3), 6, 3)
+    #print(sm.mat_to_latex(and_cov))
+    #plot_mux_maj()
     #print(sm.mat_sub_scalar(and_cov, 'p0', 0.5))
-    maj_mux_var_out()
+
+    #maj_mux_var_out()
+
+    #Mux 4 to 1:
+    #maj_4_to_1_var = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.maj_4_to_1, 6, 1), 6, 1)
+    #reduced = sm.mat_sub_scalar(maj_4_to_1_var, 'p0', 0.5)
+    #reduced = sm.mat_sub_scalar(reduced, 'p1', 0.5)
+    #print(sm.mat_to_latex(reduced))
 
     #plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)
     #print(test_hyper_vin(2047, 1000))

@@ -37,9 +37,27 @@ def xor_4_to_2(x1, x2, x3, x4):
     o2 = np.bitwise_xor(x3, x4)
     return o1, o2
 
-def and_4_to_2(x1, x2, x3, x4):
+def xnor_4_to_2(x4, x3, x2, x1):
+    o1 = np.bitwise_not(np.bitwise_xor(x1, x2))
+    o2 = np.bitwise_not(np.bitwise_xor(x3, x4))
+    return o1, o2
+
+def and_4_to_2(x4, x3, x2, x1):
     o1 = np.bitwise_and(x1, x2)
     o2 = np.bitwise_and(x3, x4)
+    return o1, o2
+
+def and_6_to_2(x2, x1, x4, x3, x6, x5):
+    o2, o1 = and_4_to_2(x4, x3, x2, x1)
+    o3 = np.bitwise_and(x6, x5)
+    res1 = np.bitwise_and(o3, o2)
+    res2 = np.bitwise_and(o2, o1)
+    res3 = np.bitwise_and(o1, o3)
+    return res3, res2, res1
+
+def or_4_to_2(x4, x3, x2, x1):
+    o1 = np.bitwise_or(x1, x2)
+    o2 = np.bitwise_or(x3, x4)
     return o1, o2
 
 def and_3_to_2(x1, x2, x3):
@@ -68,6 +86,35 @@ def maj_2(s, x4, x3, x2, x1):
     m1 = maj_1(s, x2, x1)
     m2 = maj_1(s, x4, x3)
     return m1, m2
+
+def mux_2_both_inv(s, x4, x3, x2, x1):
+    return mux_2(np.bitwise_not(s), x4, x3, x2, x1)
+
+def maj_2_both_inv(s, x4, x3, x2, x1):
+    return maj_2(np.bitwise_not(s), x4, x3, x2, x1)
+
+def mux_2_one_inv(s, x4, x3, x2, x1):
+    m1 = mux_1(np.bitwise_not(s), x2, x1)
+    m2 = mux_1(s, x4, x3)
+    return m1, m2
+
+def maj_2_one_inv(s, x4, x3, x2, x1):
+    m1 = maj_1(np.bitwise_not(s), x2, x1)
+    m2 = maj_1(s, x4, x3)
+    return m1, m2
+
+def mux_maj(s, x4, x3, x2, x1):
+    m1 = maj_1(s, x2, x1)
+    m2 = mux_1(np.bitwise_not(s), x4, x3)
+    return m1, m2
+
+def mux_4_to_1(s0, s1, x4, x3, x2, x1):
+    m1, m2 = mux_2(s0, x4, x3, x2, x1)
+    return mux_1(s1, m1, m2)
+
+def maj_4_to_1(s0, s1, x4, x3, x2, x1):
+    m1, m2 = maj_2(s0, x4, x3, x2, x1)
+    return maj_1(s1, m1, m2)
 
 def unbalanced_mux_2(s, x3, x2, x1):
     return mux_1(s, x1, x2), x3
