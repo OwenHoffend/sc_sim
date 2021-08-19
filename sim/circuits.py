@@ -1,3 +1,4 @@
+#from sim.corr_preservation import bin_array
 import numpy as np
 from sys import path
 import torch
@@ -87,6 +88,37 @@ def maj_2(s, x4, x3, x2, x1):
     m2 = maj_1(s, x4, x3)
     return m1, m2
 
+def sorter_2(x2, x1):
+    top = np.bitwise_and(x2, x1)
+    bot = np.bitwise_or(x2, x1)
+    return top, bot
+
+def even_odd_sorter_4(x4, x3, x2, x1):
+    l2_4, l2_3 = sorter_2(x4, x3)
+    l2_2, l2_1 = sorter_2(x2, x1)
+    l3_4, l3_2 = sorter_2(l2_4, l2_2)
+    l3_3, l3_1 = sorter_2(l2_3, l2_1)
+    l4_3, l4_2 = sorter_2(l3_3, l3_2)
+    return l3_4, l4_3, l4_2, l3_1
+
+def bitonic_sorter_4(x4, x3, x2, x1):
+    l2_4, l2_3 = sorter_2(x4, x3)
+    l2_2, l2_1 = sorter_2(x2, x1)
+    l3_4, l3_1 = sorter_2(l2_4, l2_1)
+    l3_3, l3_2 = sorter_2(l2_3, l2_2)
+    l4_4, l4_3 = sorter_2(l3_4, l3_3)
+    l4_2, l4_1 = sorter_2(l3_2, l3_1)
+    return l4_4, l4_3, l4_2, l4_1
+
+def insertion_sorter_4(x4, x3, x2, x1):
+    l2_4, l2_3 = sorter_2(x4, x3)
+    l3_3, l3_2 = sorter_2(l2_3, x2)
+    l4_4, l4_3 = sorter_2(l2_4, l3_3)
+    l4_2, l4_1 = sorter_2(l3_2, x1)
+    l5_3, l5_2 = sorter_2(l4_3, l4_2)
+    l6_4, l6_3 = sorter_2(l4_4, l5_3)
+    return l6_4, l6_3, l5_2, l4_1
+ 
 def mux_2_both_inv(s, x4, x3, x2, x1):
     return mux_2(np.bitwise_not(s), x4, x3, x2, x1)
 
@@ -238,11 +270,11 @@ if __name__ == "__main__":
     #print(robert_cross_3x3_to_2x2(p_arr, 32))
 
     """Test robert_cross_img"""
-    img = img_io.load_img("./img/lena_s2.jpg", gs=True)
-    out_c_mat = robert_cross_img(img, 16)
-    err = bs.mut_corr_err(1, out_c_mat)
-    print(err)
-    print(out_c_mat)
+    #img = img_io.load_img("./img/lena_s2.jpg", gs=True)
+    #out_c_mat = robert_cross_img(img, 16)
+    #err = bs.mut_corr_err(1, out_c_mat)
+    #print(err)
+    #print(out_c_mat)
 
     """Test cnn_kernel_3x3_up"""
     #img = img_io.load_img("./img/lena_s2.jpg", gs=True)
@@ -257,3 +289,7 @@ if __name__ == "__main__":
     #total = t1-t0
     #print(total)
     #print(out_c_mat)
+
+    #Test sorting networks
+    #for i in range(16):
+    #    print(even_odd_sorter_4(*bin_array(i, 4)))

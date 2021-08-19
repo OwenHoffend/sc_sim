@@ -17,9 +17,9 @@ def hypersum(K, N, n):
         result += ((K - k) / (N - n)) * rv.pmf(k)
     return result
 
-def symbolic_cov_mat_bernoulli(Mf, num_inputs, num_ouputs):
+def symbolic_cov_mat_bernoulli(Mf, num_inputs, num_ouputs, corr=0):
     Bk = cp.B_mat(num_ouputs)
-    vin_mat = sm.vin_covmat_bernoulli(num_inputs)
+    vin_mat = sm.vin_covmat_bernoulli(num_inputs, corr=corr)
     A_mat = sm.scalar_mat_poly((Mf @ Bk) * 1)
     return A_mat.T @ vin_mat @ A_mat
 
@@ -209,16 +209,11 @@ def hyper_and(x, y, N):
     return np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
 
 if __name__ == "__main__":
-    #vin = np.expand_dims(sm.vin_poly_bernoulli(2), axis=1)
-    #print(sm.mat_to_latex(vin))
-    #kvin = sm.vin_covmat_bernoulli(2)
-    #print(sm.mat_to_latex(kvin))
-    #xnor = lambda x, y: np.bitwise_not(np.bitwise_xor(x, y))
-    #xnor_var = symbolic_cov_mat_bernoulli(cp.get_func_mat(xnor, 2, 1), 2, 1)
-    #print(sm.mat_to_latex(xnor_var))
+    #var = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.and_4_to_2, 4, 2), 4, 2, corr=1)
+    #print(sm.mat_to_latex(var))
 
-    #and_cov = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.and_6_to_2, 6, 3), 6, 3)
-    #print(sm.mat_to_latex(and_cov))
+    and_cov = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.and_3_to_2, 3, 2), 3, 2, corr=1)
+    print(sm.mat_to_latex(and_cov))
     #plot_mux_maj()
     #print(sm.mat_sub_scalar(and_cov, 'p0', 0.5))
 

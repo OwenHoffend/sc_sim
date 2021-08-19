@@ -164,7 +164,7 @@ def scalar_mat_poly(mat):
             out[i, j] = Polynomial(poly_string="{}(@^1)".format(mat[i,j]))
     return out
 
-def vin_poly_bernoulli(nvars):
+def vin_poly_bernoulli_mc0(nvars):
     dim = 2 ** nvars
     Bn = cp.B_mat(nvars)
     vin = np.zeros((dim,), dtype=object)
@@ -175,10 +175,39 @@ def vin_poly_bernoulli(nvars):
         vin[i] = functools.reduce(lambda a, b: a*b, row_poly)
     return vin
 
-def vin_covmat_bernoulli(nvars):
+def vin_poly_bernoulli_mc1(nvars, ordering=None):
+    dim = 2 ** nvars
+    vin = np.zeros((dim,), dtype=object)
+
+    #Critical assumption: The input bitstreams are specified in sorted order:
+    #p0 >= p1 >= ... >= pn-1
+    #Will this matter in terms of analyzing circuits which require +1 correlation?
+    #This is actually something we can test by supplying the inputs to the circuit function in different orders
+
+    if ordering is None:
+        ordering = list(range(nvars))
+    polys = [Polynomial(poly_string="1.0(p{}^1)".format(ordering[i])) for i in range(nvars)]
+    for i in range(1, dim+1):
+        li = np.log2(i)
+        if i == 1:
+            vin[i-1] = Polynomial(poly_string="1.0(@^1)") - polys[0]
+        elif li - np.floor(li) == 0: #i is a power of 2
+            li = int(li)
+            if i == dim:
+                vin[i-1] = polys[li-1]
+            else:
+                vin[i-1] = polys[li-1] - polys[li]
+        else:
+            vin[i-1] = Polynomial(poly_string="0.0(@^1)")
+    return vin
+
+def vin_covmat_bernoulli(nvars, corr=0):
     dim = 2 ** nvars
     mat = np.zeros((dim, dim), dtype=object)
-    vin = vin_poly_bernoulli(nvars)
+    if corr:
+        vin = vin_poly_bernoulli_mc1(nvars)
+    else:
+        vin = vin_poly_bernoulli_mc0(nvars)
     _one = Polynomial(poly_string="1.0(@^1)")
     _zero = Polynomial(poly_string="0.0(@^1)")
     for i in range(dim):
@@ -264,18 +293,25 @@ if __name__ == "__main__":
     #result = test_vec @ test_vec.T
     #print(result[0,0].poly)
 
-    #vin_poly_bernoulli test
-    #mat = vin_poly_bernoulli(4)
+    #vin_poly_bernoulli_mc0 test
+    #mat = vin_poly_bernoulli_mc0(4)
     #print(mat)
 
+    #vin_poly_bernoulli_mc1 test
+    #mat = vin_poly_bernoulli_mc1(4)
+    #print(mat_to_latex(np.expand_dims(mat, axis=1)))
+
     #vin_covmat_bernoulli test
-    #mat = vin_covmat_bernoulli(2)
-    #print(mat)
+    #mat0 = vin_covmat_bernoulli(2)
+    #print(mat0)
+
+    mat1 = vin_covmat_bernoulli(2, corr=1)
+    print(mat_to_latex(mat1))
 
     #Test matrix product
     #mat = np.array([
     #    [1.0, 0],
     #    [0.5, -0.3]
     #])
-    #test = scalar_mat_poly(mat) @ vin_poly_bernoulli(1)
+    #test = scalar_mat_poly(mat) @ vin_poly_bernoulli_mc0(1)
     #print(mat_to_latex(np.expand_dims(test, axis=1)))

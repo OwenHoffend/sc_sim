@@ -9,7 +9,7 @@ cpu = torch.device("cpu")
 
 def bin_array(num, m):
     """Convert a positive integer num into an m-bit bit vector"""
-    return np.array(list(np.binary_repr(num).zfill(m))).astype(np.int8)
+    return np.array(list(np.binary_repr(num).zfill(m))).astype(bool)
 
 B_mat_dict = {}
 def B_mat(n, cuda=False):
