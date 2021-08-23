@@ -1,0 +1,250 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{datetime}
+\usepackage{graphicx}
+\usepackage{caption}
+\captionsetup[figure]{name={Figure}, labelfont=bf, font=footnotesize}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{nicematrix}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=blue,
+}
+
+\usepackage{subcaption}
+\begin{document}
+\title{Probability Transfer Matrices for Analysis of Variance and Correlation in Stochastic Circuits}
+\author{\IEEEauthorblockN{Owen Hoffend}
+\IEEEauthorblockA{Advanced Computer Architecture Laboratory\\Department of Electrical Engineering and Computer Science\\
+University of Michigan\\
+Ann Arbor, MI, 48109, USA\\
+Email: ohoffend@umich.edu}}
+\maketitle
+
+\begin{abstract}
+Abstract placeholder
+\end{abstract}
+
+\section{Introduction}
+
+(INCLUDE SECTION ABOUT SC BASICS)
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{basic_sc_figs.png}
+    \caption{SC arithmetic and data conversion circuits: (a) AND gate computing multiplication $Z_1 = X_1Y_1$; (b) Stochastic Number Generator (SNG); (c) MUX computing scaled addition $Z_1 = (1-S)X_1 + SX_2$; (d) Stochastic-to-binary converter using a binary counter.}
+    \label{fig:basic_sc_figs}
+\end{figure}
+
+When performing SC error analysis, designers must often consider the influence of variance and correlation between the input bitstreams. Additionally, it is desirable to understand how a given circuit will transform the input variances and correlation values, so that such knowledge may be incorporated into the analysis of subsequent circuit layers. Determining how the input variance values of a given stochastic circuit propagate to those of the output is the subject of several prior papers \cite{UNDERSTANDING_VAR}\cite{RIEDEL_BIT_CORR}. However, to our knowledge no prior work has done the same for correlation values, and the existing literature focuses only on deriving variance expressions for small two or three-input logic gates. Thus, their results have limited applicability towards designing larger multi-layered circuits.
+
+In this paper, we present a mathematical approach for deriving equations for a circuit's output values, variances, and correlations with respect to the input parameters. To accomplish this, we utilize probabilistic transfer matrix theory, first proposed in \cite{PTM} and \cite{EXPLOITING_CORR}.  
+
+This paper makes the following contributions:
+\begin{itemize}
+    \item A probabilistic transfer matrix approach for deriving symbolic equations for input and output probability values, variances, and pair-wise correlations for any general stochastic circuit.
+    \item A metric for measuring how well a circuit preserves a desired amount of correlation from its inputs to its outputs.
+    \item (INCLUDE HYPERGEOMETRIC INPUT ANALYSIS)
+    \item (INCLUDE PRACTICAL APPLICATION(S))
+\end{itemize}
+
+\section{Background}
+\subsection{Correlation Measurement in SC}
+Methods of measuring correlation between stochastic bitstreams has been an extensively studied topic in SC literature \cite{EXPLOITING_CORR}. Currently, the most commonly used measure is Stochastic Cross Correlation (SCC), which is designed to be value independent. SCC was proposed by Alaghi and Hayes in \cite{EXPLOITING_CORR} and has become the predominant correlation measure in the literature to date. SCC takes on a value in the range [-1, 1], where -1 indicates maximal anti-correlation, 0 indicates independence, and 1 indicates maximal correlation. The definition of SCC is given by Equation \ref{SCC}:
+\begin{equation}\label{SCC}\small
+    SCC(X,Y) =
+    \begin{cases}
+        \frac{P_{X \land Y} - P_XP_Y}{min(PX,PY)-P_XP_Y} & if \ P_{X \land Y} > P_XP_Y \\
+        \frac{P_{X \land Y} - P_XP_Y}{max(PX+PY-1, 0)-P_XP_Y} & otherwise
+    \end{cases}
+\end{equation}
+\normalsize
+
+Other measures of correlation with different properties have also been utilized in the literature, such as Pearson Correlation \cite{RIEDEL_BIT_CORR} and Zero Correlation Error (ZCE) \cite{ZCE}. In general, the correlation measures that are used in the SC context all take on the following form:
+
+\begin{equation}
+    Corr(X_i, X_j) = \frac{Cov(X_i, X_j) - \alpha(P_{\mathbf{X}})}{\beta(P_{\mathbf{X}})}
+\end{equation}
+
+Where $\alpha(P_{\mathbf{X}})$ and $\beta(P_{\mathbf{X}})$ are shifting and normalization terms applied to the covariance between the random variables $X_i$ and $X_j$. For instance, the numerator of the SCC equation is equivalent to the statistical covariance between random variables $X$ and $Y$, while the denominators are scaling terms to normalize the value to within the range of [-1, 1].
+
+It is often helpful to consider the correlation between all possible pairs of bitstreams at a circuit input or output. For a set of $n$ bitstreams, there are $n \choose 2$ such pairs, and they may be conveniently represented as a correlation matrix $C$, such that $C_{ij} = Corr(X_i, X_j)$. Typical stochastic circuits require that all pairs of input bitstreams maintain the same correlation value with respect to each other. Particularly, they usually either require independent inputs ($SCC = 0$) or fully correlated/anti-correlated inputs ($SCC = \pm 1$). Using the correlation matrix representation, we define this desirable property as \textit{mutual correlation}: \\
+
+\textbf{Definition 1:} Given a vector of bitstreams $\textbf{X}$ and its corresponding correlation matrix $C$, $\textbf{X}$ is said to be mutually correlated with $M(C) = \rho$ if $c_{ij}=\rho$ for all $i\neq j$. 
+
+\subsection{Probabilistic Transfer Matrices}
+A combinational \textit{n}-input stochastic circuit accepts a vector of Boolean random variables (bitstreams), $\textbf{X}$, and computes a set of $k$ Boolean functions: $f:\{0,1\}^n\rightarrow{\{0,1\}}^k$. The resulting output, $\textbf{Z}$, is a new \textit{k}-element vector of Boolean random variables. We denote $P_{\mathbf{X}}$ and $P_{\mathbf{Z}}$ to be the circuit's vectors of input and output probabilities, respectively.
+
+The behavior of such a circuit may be succinctly captured using a probabilistic transfer matrix (PTM) \cite{EXPLOITING_CORR}\cite{PTM}. A PTM is an $2^n \times 2^k$ matrix $M_f$ whose rows represent all possible circuit inputs: $00...0$ through $11...1$, and columns represent all possible circuit outputs, also ranging from $00...0$ to $11...0$. Each entry $M_{f_{ij}}$ of the PTM represents the probability that the input given by row \textit{i} will produce the output given by column \textit{j}.
+As an example, consider the AND gate circuit shown in Figure \ref{fig:basic_sc_figs}. The circuit's PTM is:
+\begin{equation}\label{and_ptm}
+M_{f_{AND}} = \begin{pNiceMatrix}[first-row,first-col]
+   & P(Z_1)=0 & P(Z_1)=1 \\
+X_1X_2=00 & 1 & 0 \\
+X_1X_2=01 & 1 & 0 \\
+X_1X_2=10 & 1 & 0 \\
+X_1X_2=11 & 0 & 1 \\
+\end{pNiceMatrix}
+\end{equation}
+
+Which clearly resembles the Boolean truth table of an AND gate. Indeed, PTMs are a generalization of Boolean truth tables in that they may contain probability values in the range $M_{f_{ij}} \in [0, 1]$, instead of just the values $0$ or $1$. For instance, consider the MUX adder circuit shown in Figure \ref{fig:basic_sc_figs}, which has a select input probability of $P(S)$. If input $S$ is independent of both of the MUX's data inputs $X_1$ and $X_2$, then the circuit's usual \textit{8}-row Boolean truth table may be reduced to a \textit{4}-row PTM:
+\begin{equation}\label{mux_ptm}
+M_{f_{MUX}} = \begin{pNiceMatrix}[first-row,first-col]
+   & P(Z_1)=0 & P(Z_1)=1 \\
+X_1X_2=00 & 0 & 0 \\
+X_1X_2=01 & 1-P(S) & P(S) \\
+X_1X_2=10 & P(S) & 1-P(S) \\
+X_1X_2=11 & 0 & 1 \\
+\end{pNiceMatrix}
+\end{equation}
+
+We note that all rows and columns of a PTM must sum to 1. 
+
+\subsection{Probabilistic Transfer Vectors}
+
+To specify the input of a given stochastic circuit, a $2^n \times 1$ vector of probabilities is used \cite{EXPLOITING_CORR}\cite{PTM}. In this paper, we denote such vectors as probability transfer vectors (PTVs). For a 2-input circuit, we can write:
+
+\begin{equation}
+V_{in} = \begin{pNiceMatrix}
+P(X_1X_2=00) \\
+P(X_1X_2=01) \\
+P(X_1X_2=10) \\
+P(X_1X_2=11)
+\end{pNiceMatrix}
+\end{equation}
+
+As noted in \cite{PTM}, $V_{in}$ implicitly captures information about correlation between circuit inputs. For instance, the PTM vectors $V_{in_{pos}} = [1/2, 0, 0, 1/2]$ and $V_{in_{neg}} = [0, 1/2, 1/2, 0]$ both refer to a pair random variables with marginal probabilities of $1/2$, but they differ significantly in terms of correlation: the first has maximum positive correlation (maximum chance overlapping 1's) while the second has maximum negative correlation (minimum chance of overlapping 1's).
+
+When combined with PTMs, PTVs are a powerful tool for analyzing the behavior of stochastic circuits. As demonstrated in \cite{EXPLOITING_CORR}, the PTV of a circuit's output, $V_{out}$ (shape $2^k \times 1$), may be expressed as a matrix-vector product between a PTV and PTM:
+\begin{equation}\label{Vout}
+V_{out} = M_{f}^{\textsf{T}}V_{in}
+\end{equation}
+
+An important consequence of Eq. \ref{Vout} is that the PTMs of subsequent layers of a multi-layer circuit may be combined using matrix multiplication, as shown in \cite{PTM}. Consider a two-layer circuit circuit where $M_{f_1}$ (shape $2^n \times 2^{k_1}$) and $M_{f_2}$ (shape $2^{k_1} \times 2^{k_2}$) are the PTMs for the first and second layers, respectively. Then the overall circuit behavior is given by: $V_{out} = M_{f_2}^{\mathsf{T}}M_{f_1}^{\mathsf{T}}V_{in}$. This composition can be thought of as two iterations of Eq. \ref{Vout}, where we first compute $V_{temp} = M_{f_1}^{\mathsf{T}}V_{in}$ followed by $V_{out} = M_{f_2}^{\mathsf{T}}V_{temp}$. This concept generalizes to any \textit{m}-layer combinational circuit.
+
+\section{Finding Probability, Variance, and Covariance using PTMs}
+In this section, we derive expressions for the probability values, variances, and covariances of the input and output bitstreams of a general stochastic circuit PTM, $M_f$, with respect to a given input PTV $V_{in}$.
+
+\subsection{Reducing PTVs to Probability Vectors}
+Suppose we define a $2^n\times n$ binary matrix $B(n)$ such that the \textit{i}th row contains the binary representation of the integer value $i-1$. For example, $B(2)$ can be written as:
+\begin{equation}\label{B2}
+B(2) = \begin{pNiceMatrix}
+0 & 0\\
+0 & 1\\
+1 & 0\\
+1 & 1\\
+\end{pNiceMatrix}  
+\end{equation}
+
+Note the how each row of $B(n)$ corresponds to a possible circuit input vector for an \textit{n}-input circuit, as do the rows of a $2^n \times 1$ PTV. Given this relationship, we may use $B(n)$ to reduce the $2^n \times 1$ input PTV ($V_{in}$ into a $n \times 1$ vector of input probabilities using matrix-vector multiplication (Eq. \ref{Pin}). Similarly, we may write an equation to convert the circuit's $2^k \times 1$ output PTV ($V_{out}$) into a vector of output probabilities (Eq. \ref{Pout}). 
+\begin{equation}\label{Pin}
+P_{\mathbf{X}} = B(n)^{\mathsf{T}}V_{in}
+\end{equation}
+\begin{equation}\label{Pout}
+P_{\mathbf{Z}} = B(k)^{\mathsf{T}}M_{f}^{\textsf{T}}V_{in} = B(k)^{\mathsf{T}}V_{out}
+\end{equation}
+
+Note, however, that we cannot generally compute the inverse of Eq. \ref{Pin} or Eq. \ref{Pout}; we cannot find $V_{in}$ with only knowledge of $P_{\mathbf{X}}$, since $P_{\mathbf{X}}$ on its own does not include correlation information. In section \ref{FINDING_VIN}, we explore how to find algebraic expressions for $V_{in}$ from $P_{\mathbf{X}}$ when correlation information is known.
+
+\subsection{Computing Variance and Covariance using PTMs}
+The covariance matrix of a random vector $\mathbf{X}$, denoted $K_{\mathbf{XX}}$ contains all pair-wise covariances of the random variables $X_i$ and $X_j$, for $1 \leq i, j \leq n$. Thus, $(K_{\mathbf{XX}})_{ij} = Cov(X_i, X_j)$ when $i \neq j$. Additionally, the diagonal entries of this matrix contain the variances of the random variables: $(K_{\mathbf{XX}})_{ii} = Var(X_i)$. This fact motivates finding a method of computing the covariance matrix of a set of bitstreams using PTM theory. 
+
+From general statistics, it is known that the equation for the covariance between two random variables is $Cov(X_i, X_j) = E[X_iX_j] - E[X_i]E[X_j]$. If we model each input as a Bernoulli random variable, the quantity $E[X_i]E[X_j]$ is readily computable with knowledge of the input probability vector: $E[X_i]E[X_j] = P_{X_i}P_{X_j}$. Likewise, $E[X_iX_j] = P_{\mathbf{X}_i \land \mathbf{X}_j}$. Since $P_{\mathbf{X}_i \land \mathbf{X}_j}$ requires information about the correlation between $X_i$ and $X_j$, we may extract such information from $V_{in}$ by using binary matrices, in a similar manner to how we extracted $P_{\mathbf{X}}$ in the previous section (Eq. \ref{Pin}):
+
+\begin{equation}\label{COV_MAT_1}
+P_{\mathbf{X}_i \land \mathbf{X}_j} = \sum_{q=1}^{2^n} (B(n)_{qi} \land B(n)_{qj})(V_{in})_q
+\end{equation}
+
+For each pair of input bitstreams $(i, j)$, Eq. \ref{COV_MAT_1} uses $V_{in}$ to compute a weighted sum of the probability of sampling a 1 on both $X_i$ and $X_j$. With this result, we may express the covariance matrix of the input as:
+
+\begin{equation}\label{COV_MAT_2}
+(K_{\mathbf{XX}})_{ij} = P_{\mathbf{X}_i \land \mathbf{X}_j} - P_{\mathbf{X}_i}P_{\mathbf{X}_j}
+\end{equation}
+
+To compute the covariance matrix of the output, we may use Eq. \ref{Vout} to find the output PTV, $V_{out}$, and Eq. \ref{Pout} to find the output probability vector, $P_{\mathbf{Z}}$. The output covariance matrix is then found using the same procedure as with the input:
+
+\begin{equation}\label{COV_MAT_3}
+P_{\mathbf{Z}_i \land \mathbf{Z}_j} = \sum_{q=1}^{2^k} (B(k)_{qi} \land B(k)_{qj})(V_{out})_q
+\end{equation}
+
+\begin{equation}\label{COV_MAT_4}
+(K_{\mathbf{ZZ}})_{ij} = P_{\mathbf{Z}_i \land \mathbf{Z}_j} - P_{\mathbf{Z}_i}P_{\mathbf{Z}_j}
+\end{equation}
+
+\section{Finding the Input Probability Transfer Vector}\label{FINDING_VIN}
+
+In this section, we derive equations for a general input PTV, $V_{in}$, with respect to the input probability vector $P_{\mathbf{X}}$ when the correlation is known. In particular, we make this derivation for the common cases when the input is known to be mutually correlated at $\rho = 0$ and $\rho = \pm 1$. Thus, we write the PTV as a function of $P_{\mathbf{X}}$, using the notation: $V_0(P_{\mathbf{X}})$, $V_{1}(P_{\mathbf{X}})$, and $V_{-1}(P_{\mathbf{X}})$, to represent the $0$ (independent), $+1$, and $-1$ correlated versions, respectively.
+
+\subsection{PTVs for Independent Inputs}
+In SC design, the most common case to consider is when the input bitstreams are all mutually independent from each other ($SCC(\mathbf{X}_i, \mathbf{X}_j) = 0$ for all $i \neq j$. If we model the input bitstreams as a sequence of Bernoulli trials, then the probability of encountering an input pattern such as $\mathbf{X}_1\mathbf{X}_2\mathbf{X}_3 = 110$ would be $P_{\mathbf{X}_1}P_{\mathbf{X}_2}(1-P_{\mathbf{X}_3})$. Each entry in the vector $V_0(P_{\mathbf{X}})$ represents one such pattern, which may be computed with a product over the $n$ bitstreams:
+\begin{equation}\label{V_0}
+V_0(P_{\mathbf{X}})_i = \prod_{j=1}^n B(n)_{ij}P_{X_j} + (1-B(n)_{ij})(1-P_{X_j})
+\end{equation}
+
+Eq. \ref{V_0} works by selecting either $P_{\mathbf{X}_j}$ or $1-P_{\mathbf{X}_j}$ for each bitstream $j$. The selection for each, respectively, is achieved by multiplying by the corresponding entries of a binary matrices $B(n)$ and $1-B(n)$.
+
+%HYPERGEOMETRIC VERSION OF V_0 MIGHT GO HERE
+
+\subsection{PTVs for Maximally Correlated \& Anti-Correlated Inputs}
+For the case where the input bitstreams are mutually correlated with  $SCC(\mathbf{X}_i, \mathbf{X}_j) = \pm 1$, we don't need any assumption about the type of trial 
+
+We assume, without loss of generality, that the vector of input probabilities $P_{\mathbf{X}}$ is arranged in sorted order: $P_{\mathbf{X}_1} \geq P_{\mathbf{X}_2} \geq ... \geq P_{\mathbf{X}_n}$. Then each index of $V_1(P_{\mathbf{X}})$ may be computed using the following piece-wise equation: 
+\begin{equation}\label{V_1}
+    V_1(P_{\mathbf{X}})_i =
+    \begin{cases}
+        1 - P_{\mathbf{X}_1} & if \ i = 1 \\
+        P_{\mathbf{X}_q} - P_{\mathbf{X}_{q+1}} & if \ i = 2^q \ for \ 0 < q < n\\
+        P_{\mathbf{X}_n} & if \ i = 2^n \\
+        0 & otherwise
+    \end{cases}
+\end{equation}
+
+Similarly, for inputs mutually correlated with SCC = -1, we have the following expression for $V_{-1}(P_{\mathbf{X}})$:
+\begin{equation}\label{V_N1}
+    V_{-1}(P_{\mathbf{X}})_i =
+    \begin{cases}
+        1 - \sum P_{\mathbf{X}} & if \ i = 1\\
+        P_{\mathbf{X}_{q+1}} & if \ i = 2^q \ for \ 0 \leq q \leq n\\
+        0 & otherwise
+    \end{cases}
+\end{equation}
+
+%Perhaps include a section about the iterative algorithm for finding Vin here
+With the exception of a brief discussion in \cite{EXPLOITING_CORR}, we are unable to find examples of circuits in the SC literature that operate under input correlation levels other than these three. Given that Eq. \ref{Vout} provides a method of finding $V_{out}$ with respect to $V_{in}$, we therefore believe equations \ref{V_0}-\ref{V_N1} to be sufficient for nearly all practical SC design applications.
+
+\section{Case Study 1: Closed-form variance expressions}
+
+\section{Case Study 2: Variance Analysis (TBD)}
+
+\section{Case Study 3: Correlation Preservation (TBD)}
+
+\section{Conclusion}
+This is a conclusion!
+
+\begin{thebibliography}{1}
+
+\bibitem{EXPLOITING_CORR}
+Alaghi, A. and J.P. Hayes, “Exploiting correlation in stochastic circuit design.” Proc. Intl. Conf. Computer Design, pp. 39–46, 2013.
+
+\bibitem{ZCE}
+H. Hsiao, J. S. Miguel, Y. Hara-Azumi and J. Anderson, "Zero Correlation Error: A Metric for Finite-Length Bitstream Independence in Stochastic Computing," 26th Asia and South Pacific Design Automation Conference (ASP-DAC), pp. 260-265, 2021.
+
+\bibitem{UNDERSTANDING_VAR}
+C. Ma, S. Zhong and H. Dang, "Understanding variance propagation in stochastic computing systems," 2012 IEEE 30th International Conference on Computer Design (ICCD), 2012, pp. 213-218.
+
+\bibitem{HYPERGEO}
+T. J. Baker and J. P. Hayes, "The Hypergeometric Distribution as a More Accurate Model for Stochastic Computing," 2020 Design, Automation \& Test in Europe Conference \& Exhibition (DATE), 2020, pp. 592-597.
+
+\bibitem{PTM}
+Krishnaswamy, S., Viamontes, G., Markov, I., \& Hayes, J. (2008). Probabilistic Transfer Matrices in Symbolic Reliability Analysis of Logic Circuits. ACM Trans. Des. Autom. Electron. Syst., 13(1).
+
+\bibitem{BAYES}
+T. J. Baker and J. P. Hayes, "Bayesian Accuracy Analysis of Stochastic Circuits," 2020 IEEE/ACM International Conference On Computer Aided Design (ICCAD), 2020, pp. 1-9.
+
+\bibitem{RIEDEL_BIT_CORR}
+M. Parhi, M. D. Riedel and K. K. Parhi, "Effect of bit-level correlation in stochastic computing," 2015 IEEE International Conference on Digital Signal Processing (DSP), 2015, pp. 463-467
+
+\end{thebibliography}
+\end{document}
