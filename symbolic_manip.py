@@ -175,39 +175,34 @@ def vin_poly_bernoulli_mc0(nvars):
         vin[i] = functools.reduce(lambda a, b: a*b, row_poly)
     return vin
 
-def vin_poly_bernoulli_mc1(nvars, ordering=None):
+def vin_poly_bernoulli_mc1(nvars, ordering=None, names=None):
     dim = 2 ** nvars
-    vin = np.zeros((dim,), dtype=object)
-
-    #Critical assumption: The input bitstreams are specified in sorted order:
-    #p0 >= p1 >= ... >= pn-1
-    #Will this matter in terms of analyzing circuits which require +1 correlation?
-    #This is actually something we can test by supplying the inputs to the circuit function in different orders
-
+    vin = np.array([Polynomial(poly_string="0.0(@^1)") for _ in range(dim)])
+    if names == None:
+        name_arr = ["p{}".format(i) for i in range(nvars)]
+    else:
+        name_arr = names
     if ordering is None:
         ordering = list(range(nvars))
-    polys = [Polynomial(poly_string="1.0(p{}^1)".format(ordering[i])) for i in range(nvars)]
-    for i in range(1, dim+1):
-        li = np.log2(i)
-        if i == 1:
-            vin[i-1] = Polynomial(poly_string="1.0(@^1)") - polys[0]
-        elif li - np.floor(li) == 0: #i is a power of 2
-            li = int(li)
-            if i == dim:
-                vin[i-1] = polys[li-1]
-            else:
-                vin[i-1] = polys[li-1] - polys[li]
-        else:
-            vin[i-1] = Polynomial(poly_string="0.0(@^1)")
+    polys = [Polynomial(poly_string="1.0({}^1)".format(name_arr[i])) for i in range(nvars)]
+    vin[0] = Polynomial(poly_string="1.0(@^1)") - polys[ordering[0]]
+    vin[dim-1] = polys[ordering[nvars-1]]
+    i = 0
+    for k in range(1, nvars):
+        i += 2 ** ordering[k-1]
+        vin[i] = polys[ordering[k-1]] - polys[ordering[k]]
     return vin
 
-def vin_covmat_bernoulli(nvars, corr=0):
+def vin_covmat_bernoulli(nvars, corr=0, custom=None):
     dim = 2 ** nvars
     mat = np.zeros((dim, dim), dtype=object)
-    if corr:
-        vin = vin_poly_bernoulli_mc1(nvars)
+    if custom is not None:
+        vin = custom
     else:
-        vin = vin_poly_bernoulli_mc0(nvars)
+        if corr:
+            vin = vin_poly_bernoulli_mc1(nvars)
+        else:
+            vin = vin_poly_bernoulli_mc0(nvars)
     _one = Polynomial(poly_string="1.0(@^1)")
     _zero = Polynomial(poly_string="0.0(@^1)")
     for i in range(dim):
@@ -298,15 +293,21 @@ if __name__ == "__main__":
     #print(mat)
 
     #vin_poly_bernoulli_mc1 test
-    #mat = vin_poly_bernoulli_mc1(4)
+    #mat = vin_poly_bernoulli_mc1(2, names=['p1', 'p2'])
     #print(mat_to_latex(np.expand_dims(mat, axis=1)))
 
     #vin_covmat_bernoulli test
     #mat0 = vin_covmat_bernoulli(2)
     #print(mat0)
 
-    mat1 = vin_covmat_bernoulli(2, corr=1)
-    print(mat_to_latex(mat1))
+    #mat1 = vin_covmat_bernoulli(2, corr=1)
+    #print(mat_to_latex(mat1))
+
+    #Test using kronecker product to get vin for a general input correlation structure
+    #vin_2_a = vin_poly_bernoulli_mc1(2, names=['p0', 'p1'])
+    #vin_2_b = vin_poly_bernoulli_mc1(1, names=['s0'])
+    #vin = np.kron(vin_2_b, vin_2_a)
+    #print(mat_to_latex(np.expand_dims(vin, axis=1)))
 
     #Test matrix product
     #mat = np.array([
