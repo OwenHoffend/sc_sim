@@ -43,7 +43,7 @@ def xnor_4_to_2(x4, x3, x2, x1):
     o2 = np.bitwise_not(np.bitwise_xor(x3, x4))
     return o1, o2
 
-def and_4_to_2(x4, x3, x2, x1):
+def and_4_to_2(x1, x3, x2, x4):
     o1 = np.bitwise_and(x1, x2)
     o2 = np.bitwise_and(x3, x4)
     return o1, o2
@@ -56,7 +56,7 @@ def and_6_to_2(x2, x1, x4, x3, x6, x5):
     res3 = np.bitwise_and(o1, o3)
     return res3, res2, res1
 
-def or_4_to_2(x4, x3, x2, x1):
+def or_4_to_2(x1, x3, x2, x4):
     o1 = np.bitwise_or(x1, x2)
     o2 = np.bitwise_or(x3, x4)
     return o1, o2
@@ -78,14 +78,15 @@ def maj_1(s, x1, x2):
     o1 = np.bitwise_or(a1, a2)
     return np.bitwise_or(o1, a3)
 
-def mux_2(s, x4, x3, x2, x1):
-    m1 = mux_1(s, x2, x1)
-    m2 = mux_1(s, x4, x3)
+#s0 is the smallest index of the arguments
+def mux_2(s0, s1, x1, x2, x3, x4):
+    m1 = mux_1(s0, x2, x1)
+    m2 = mux_1(s1, x4, x3)
     return m1, m2
 
-def maj_2(s, x4, x3, x2, x1):
-    m1 = maj_1(s, x2, x1)
-    m2 = maj_1(s, x4, x3)
+def maj_2(s0, s1, x1, x2, x3, x4):
+    m1 = maj_1(s0, x2, x1)
+    m2 = maj_1(s1, x4, x3)
     return m1, m2
 
 def sorter_2(x2, x1):

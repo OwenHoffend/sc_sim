@@ -279,6 +279,18 @@ def get_corr_mat(bs_arr, bs_len=None, use_zscc=False, use_cov=False):
                 Cij[i][j] = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
     return Cij
 
+def get_corr_mat_np(bs_mat):
+    """Same as get_corr_mat, but accepts np array as input"""
+    n, N = bs_mat.shape
+    Cij = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                Cij[i][j] = bs_zscc(np.packbits(bs_mat[i, :]), np.packbits(bs_mat[j, :]), bs_len=N)
+            else:
+                Cij[i][j] = 1
+    return Cij
+
 def get_corr_mat_cuda(bs_arr):
     """
     Use pytorch cuda to get zscc matrix.
@@ -322,7 +334,8 @@ def gen_correlated(scc, n, p1, p2, bs_gen_func):
 def mut_corr_err(mc, c_mat):
     n, _ = c_mat.shape
     mc_mat = np.tril(np.ones_like(c_mat) * mc, -1)
-    return np.sum(np.abs(mc_mat - c_mat)) / (n * (n-1) / 2)
+    c_mat_tril = np.tril(c_mat, -1)
+    return np.sum(np.abs(mc_mat - c_mat_tril)) / (n * (n-1) / 2)
 
 if __name__ == "__main__":
     """Test bs_bp_lfsr"""

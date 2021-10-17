@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from numpy.lib import unpackbits
 import sim.bitstreams as bs
+import sim.circuits as cir
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 cpu = torch.device("cpu")
@@ -243,7 +244,7 @@ def corr_err_cuda(Px, Mf1, Mf2, c1, c2, N=128):
 def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
     n, k = np.log2(Mf.shape).astype(np.uint16)
     if Mf2 is not None:
-        _, k = np.log2(Mf2.shape).astype(np.uint16)
+        _, k = np.log2(Mf2.shape).astype(np.uint16) #<-- wtf why not k2?
     p_arr = np.zeros(n)
     err = np.zeros((k, k))
     max_err = np.zeros((k, k))
@@ -270,8 +271,30 @@ def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
         #    outfile.write(str(new_err) + '\n')
         err += new_err
         max_err = np.maximum(max_err, new_err)
-    print(test)
     return max_err, err / (N - 1) ** n
+
+def err_uniform_rand(m, Mf1, Mf2, vin_func_c1, vin_func_c2):
+    """Compute the correlation error for gven circuit by generating a set of 
+        input vectors drawn from a uniform random distribution"""
+    
+    n, k1 = np.log2(Mf1.shape).astype(np.uint16)
+    _, k2 = np.log2(Mf2.shape).astype(np.uint16)
+    Bk1 = B_mat(k1)
+    Bk2 = B_mat(k2)
+    Px = np.zeros(n)
+    errs = np.zeros(k2)
+    for i in range(m):
+        Px = np.random.rand(n)
+        Px[0] = 0.5
+        Px[1] = 0.5
+        vn = vin_func_c1(Px)
+        vz1 = Mf1.T @ vn
+        Pz1 = Bk1.T @ vz1
+        vz1_ideal = vin_func_c2(Pz1)
+        Pz2 = Bk2.T @ Mf2.T @ vz1
+        Pz2_ideal = Bk2.T @ Mf2.T @ vz1_ideal
+        errs += np.abs(Pz2_ideal - Pz2)
+    return errs / m
 
 def err_sweep_cuda(N, Mf, vin_type, err_type='e', Mf2=None):
     """CUDA-accelerated version of err_sweep"""
@@ -383,3 +406,39 @@ def circular_shift_corr_sweep(n, k, shifts):
             scc_mat += np.abs(get_output_corr_mat(Vin, Mf, 2 ** n, use_zscc=False)[1])
         #print(i)
     return scc_mat / ((2 ** n) ** 2)
+
+if __name__ == "__main__":
+    #m = 20000
+    #Mf1 = get_func_mat(cir.mux_2, 6, 2)
+    #Mf1 = get_func_mat(cir.maj_2, 6, 2)
+    #Mf2 = get_func_mat(np.bitwise_and, 2, 1)
+    
+    #vin_func_c1 = lambda Px: get_vin_mc0(Px) #0
+    #vin_func_c1 = lambda Px: np.kron(get_vin_mc1(Px[0:2]), get_vin_mc1(Px[2:6])) #1
+
+    #vin_func_c2 = lambda Pz1: get_vin_mc0(Pz1) #0
+    #vin_func_c2 = lambda Pz1: get_vin_mc1(Pz1) #1
+    
+    #err_mux = err_uniform_rand(m, Mf1, Mf2, vin_func_c1, vin_func_c2)
+    #print(np.round(err_mux, 4))
+
+    #1 to 1 preservation of MUX - 0.10538512
+    #0 to 0 preservation of MUX - 1.95010512e-17 (preserves)
+    #1 to 0 preservation of MUX - 0.02833997
+    #0 to 1 preservation of MUX - 0.11504263
+
+    #1 to 1 preservation of MAJ - 0.0838604 (better)
+    #0 to 0 preservation of MAJ - 1.95995404e-17
+    #1 to 0 preservation of MAJ - 0.03326625 (worse)
+    #0 to 1 preservation of MAJ - 0.10243964
+
+    #Reruns with 0.5:
+    #1 to 1 preservation of MUX - 0.0490
+    #0 to 0 preservation of MUX - 0.0000
+    #1 to 0 preservation of MUX - 0.0922
+    #0 to 1 preservation of MUX - 0.1326
+
+    #1 to 1 preservation of MAJ - 0.0171 (better)
+    #0 to 0 preservation of MAJ - 0.0000
+    #1 to 0 preservation of MAJ - 0.1170 (worse)
+    #0 to 1 preservation of MAJ - 0.1339
