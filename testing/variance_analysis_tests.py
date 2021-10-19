@@ -1,57 +1,14 @@
 import numpy as np
-from scipy.stats import hypergeom
 import matplotlib.pyplot as plt
-from matplotlib import cm
-import sim.circuits as cir
 import sim.bitstreams as bs
-import sim.corr_preservation as cp
-import symbolic_manip as sm
-from testing.test_main import profile
-
-def hypersum(K, N, n):
-    result = 0
-    rv = hypergeom(N, K, n)
-    for k in range(K+1):
-        print("First: {}".format(((K - k) / (N - n))))
-        print("Second: {}".format(rv.pmf(k)))
-        result += ((K - k) / (N - n)) * rv.pmf(k)
-    return result
-
-def symbolic_cov_mat_bernoulli(Mf, num_inputs, num_ouputs, corr=0, custom=None):
-    Bk = cp.B_mat(num_ouputs)
-    vin_mat = sm.vin_covmat_bernoulli(num_inputs, corr=corr, custom=custom)
-    A_mat = sm.scalar_mat_poly((Mf @ Bk) * 1)
-    return A_mat.T @ vin_mat @ A_mat
-
-def maj_mux_var_out():
-    mux_mf = cp.get_func_mat(cir.mux_2, 6, 2)
-
-    vin_sels = sm.vin_poly_bernoulli_mc1(2, names=["s0", "s1"])
-    vin_data = sm.vin_poly_bernoulli_mc1(4, names=["p1", "p2", "p3", "p4"])
-    vin = np.kron(vin_sels, vin_data)
-
-    mux_poly = symbolic_cov_mat_bernoulli(mux_mf, 6, 2, corr=1, custom=vin)
-    sm.mat_sub_scalar(mux_poly, "s0", 0.5)
-    sm.mat_sub_scalar(mux_poly, "s1", 0.5)
-    print(sm.mat_to_latex(mux_poly))
-
-    maj_mf = cp.get_func_mat(cir.maj_2, 6, 2)
-    maj_poly = symbolic_cov_mat_bernoulli(maj_mf, 6, 2, corr=1, custom=vin)
-    sm.mat_sub_scalar(maj_poly, "s0", 0.5)
-    sm.mat_sub_scalar(maj_poly, "s1", 0.5)
-    print(sm.mat_to_latex(maj_poly))
-
-    cov_diff = maj_poly[1,0] - mux_poly[1,0]
-    print(cov_diff.get_latex())
-
-def var2(a, b, N):
-    return (a * b * (1-a) * (1-b))/(N-1)
+import sim.PTM as pm
+from test_main import profile
 
 @profile
 def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_predicted_cov=None):
     """Compare the actual output covariance matrix for a set of lfsr-generated input bitstreams
         to the theoretical one predicted based on the computed input covariance matrix"""
-    Mf = cp.get_func_mat(func, num_inputs, num_outputs)
+    Mf = pm.get_func_mat(func, num_inputs, num_outputs)
     rng = bs.SC_RNG()
     bs_mat = np.zeros((num_inputs, N), dtype=np.uint8)
     Pxs = np.zeros((samps, num_inputs))
@@ -63,17 +20,17 @@ def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_pred
         for j in range(num_inputs):
             #bs_mat[j, :] = rng.bs_lfsr(N, p_arr[j], keep_rng=False, pack=False)
             bs_mat[j, :] = rng.bs_uniform(N, p_arr[j], keep_rng=False, pack=False)
-        vins[i, :] = cp.get_actual_vin(bs_mat)
+        vins[i, :] = pm.get_actual_vin(bs_mat)
         bs_mat_out = np.vstack(func(*np.split(bs_mat, bs_mat.shape[0], axis=0))[::-1])
         Pxs[i, :] = bs.bs_mean(bs_mat, bs_len=N)
         Pzs[i, :] = bs.bs_mean(bs_mat_out, bs_len=N)
 
         #Assert that we get the correct p_arr back out (just a test)
-        #assert np.all(np.isclose(p_arr, cp.B_mat(num_inputs).T @ vins[i, :]))
+        #assert np.all(np.isclose(p_arr, pm.B_mat(num_inputs).T @ vins[i, :]))
 
     px_cov = np.cov(Pxs.T)
     vin_cov = np.cov(vins.T)
-    Bk = cp.B_mat(num_outputs)
+    Bk = pm.B_mat(num_outputs)
     A_mat = Bk.T @ Mf.T
     ideal_out_cov = A_mat @ vin_cov @ A_mat.T #This is the equation we are testing
     out_cov = np.cov(Pzs.T)
@@ -88,38 +45,6 @@ def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_pred
     print(np.all(np.isclose(ideal_out_cov, out_cov)))
     if eq_predicted_cov is not None:
         print("Eq-predicted cov: \n {}".format(eq_predicted_cov(*p_arr, N) ** 2))
-
-def mux_cov(p1, p2, p3, p4):
-    return 0.25*p1*p3-0.25*p2*p3-0.25*p1*p4+0.25*p2*p4
-
-def maj_cov(p1, p2, p3, p4):
-    return p1*p2*p3*p4-0.5*p2*p3*p4-0.5*p1*p3*p4-0.5*p1*p2*p4+0.25*p2*p4+0.25*p1*p4-0.5*p1*p2*p3+0.25*p2*p3+0.25*p1*p3
-
-def plot_mux_maj():
-    xy_vals = np.linspace(0, 1, 100)
-    mux = np.zeros((100, 100))
-    maj = np.zeros((100, 100))
-    for idx, x in enumerate(xy_vals):
-        for idy, y in enumerate(xy_vals):
-            mux[idx][idy] = mux_cov(0.5, x, 0.5, y)
-            maj[idx][idy] = maj_cov(0.5, x, 0.5, y)
-
-    X, Y = np.meshgrid(xy_vals, xy_vals)
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-
-    surf = ax.plot_surface(X, Y, mux, label="mux", color='r')
-    surf3 = ax.plot_surface(X, Y, maj, label="maj", color='b')
-
-    ax.set_xlabel('p2 Input Value')
-    ax.set_ylabel('p4 Input Value')
-    ax.set_zlabel('Covariance')
-    maxval = np.maximum(np.max(mux), np.max(maj))
-    minval = np.minimum(np.min(mux), np.min(maj))
-    ax.set_zlim(minval, maxval)
-    #fig.colorbar(surf , shrink=0.5, aspect=5)
-    plt.title("Covariance vs. Input p2 and p4 Values")
-    plt.show()
 
 @profile
 def plot_variance(func, ideal_sc_func, uniform_func, hyper_func, N, samps):
@@ -189,10 +114,10 @@ def test_hyper_vin(N, samps):
         bsx = rng.bs_lfsr(N, px, keep_rng=False, pack=False) * 1
         bsy = rng.bs_lfsr(N, py, keep_rng=False, pack=False) * 1
         bsz = rng.bs_lfsr(N, pz, keep_rng=False, pack=False) * 1
-        actual_vin = cp.get_actual_vin(np.array([bsx, bsy, bsz]))
+        actual_vin = pm.get_actual_vin(np.array([bsx, bsy, bsz]))
         
         #Get ideal vin
-        ideal_vin = cp.get_vin_mc0(np.array([px, py, pz]))
+        ideal_vin = pm.get_vin_mc0(np.array([px, py, pz]))
 
         #Compare the two - probably different
         err += np.abs(actual_vin - ideal_vin)
@@ -215,36 +140,8 @@ def hyper_or(x, y, N):
 def hyper_and(x, y, N):
     return np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
 
-if __name__ == "__main__":
-    #var = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.and_4_to_2, 4, 2), 4, 2, corr=1)
-    #print(sm.mat_to_latex(var))
-    
-    vin_top = sm.vin_poly_bernoulli_mc1(2, names=['p0', 'p2'])
-    print(sm.mat_to_latex(np.expand_dims(vin_top, axis=1)))
-    vin_bot = sm.vin_poly_bernoulli_mc1(2, ordering=[1, 0], names=['p1', 'p3'])
-    print(sm.mat_to_latex(np.expand_dims(vin_bot, axis=1)))
-    vin = np.kron(vin_top, vin_bot)
-    print(sm.mat_to_latex(np.expand_dims(vin, axis=1)))
-
-    and_cov = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.and_4_to_2, 4, 2), 4, 2, custom=vin)
-    print(sm.mat_to_latex(and_cov))
-    #plot_mux_maj()
-    #print(sm.mat_sub_scalar(and_cov, 'p0', 0.5))
-
-    #print(sm.mat_to_latex(sm.scalar_mat_poly(cp.get_func_mat(cir.even_odd_sorter_4, 4, 4) * 1)))
-
-    #sorter = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.even_odd_sorter_4, 4, 4), 4, 4, corr=1)
-    #print(sm.mat_to_latex(sorter))
-
-    #maj_mux_var_out()
-
-    #Mux 4 to 1:
-    #maj_4_to_1_var = symbolic_cov_mat_bernoulli(cp.get_func_mat(cir.maj_4_to_1, 6, 1), 6, 1)
-    #reduced = sm.mat_sub_scalar(maj_4_to_1_var, 'p0', 0.5)
-    #reduced = sm.mat_sub_scalar(reduced, 'p1', 0.5)
-    #print(sm.mat_to_latex(reduced))
-
-    #plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)
+def variance_analysis_main():
+    plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)
     #print(test_hyper_vin(2047, 1000))
     #mux = lambda x, y, z: np.bitwise_or(np.bitwise_and(x, z), np.bitwise_and(y, np.bitwise_not(z)))
     #func = lambda x, y: (np.bitwise_and(x, y), np.bitwise_or(x, y))

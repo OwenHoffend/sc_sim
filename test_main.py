@@ -2,7 +2,9 @@ import cProfile
 from pstats import Stats
 
 #Test script imports
-from testing.corr_preservation_tests import *
+#from testing.corr_preservation_tests import *
+#from testing.symbolic_manip_tests import *
+from testing.variance_analysis_tests import *
 
 def profile(func):
     """Decorator for enabling profiling"""
@@ -18,5 +20,9 @@ def profile(func):
         return result
     return wrapper
 
+def main():
+    """THIS SHOULD BE THE MAIN ENTRY POINT FOR EVERYTHING!"""
+    variance_analysis_main()
+
 if __name__ == "__main__":
-    pass
+    main()

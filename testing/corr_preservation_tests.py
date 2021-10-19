@@ -1,4 +1,6 @@
 from sim.corr_preservation import *
+from sim.PTM import *
+from sim.circuits import *
 
 def test_circular_shift_compare():
     shifts = 2

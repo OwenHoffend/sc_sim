@@ -55,6 +55,19 @@ def disp_img(img_arr):
     img = Image.fromarray(img_arr)
     img.show()
 
+#def img_to_bs_test(**kwargs):
+#    """Test image --> bitstream conversion"""
+#    lena_gs = img_io.load_img("./img/lena256.png", gs=True)
+#    rng = bitstreams.SC_RNG()
+#    return img_io.img_to_bs(lena_gs, rng.bs_lfsr, **kwargs)
+#
+#def img_sc_convert_test(**kwargs):
+#    """Test image --> bitstream --> image conversion"""
+#    lena_bs = img_to_bs_test(**kwargs)
+#    lena_recon = img_io.bs_to_img(lena_bs, bitstreams.bs_mean)
+#    img_io.disp_img(lena_recon)
+#    return lena_recon
+
 if __name__ == "__main__":
     """Basic test of image loading, manipulation, and storing"""
     lena = load_img("./img/lena256.png")
