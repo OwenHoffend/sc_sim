@@ -227,41 +227,27 @@ def get_input_corr_mat(Vin, Mf, N):
             Cin[i][j] = bs.bs_zscc_ovs(Pin[i], Pin[j], No_in[i][j], N)
     return Cin
 
-def kvv(ptv):
+def kvv(ptv, N):
     """Helper function for ptm_input_cov_mat and ptm_output_cov_mat"""
     n_2 = ptv.size
     diag_mask = 1 - np.eye(n_2)
     ptv_mat = ptv.reshape((n_2, 1))
-    covs = (ptv_mat @ ptv_mat.T) * diag_mask
-    vars_ = ptv * (1 - ptv)
-    return covs + vars_
+    covs = -(ptv_mat @ ptv_mat.T) * diag_mask
+    vars_ = np.diag(ptv * (1 - ptv))
+    return (covs + vars_) / N
 
 def ptm_input_cov_mat(ptv, N):
     """Build a covariance matrix using a given PTV (new formula)
         Uses the Bernoulli Model"""
     n_2 = ptv.size
     n = np.log2(n_2).astype(np.uint16)
-    kvv_ = kvv(ptv)
-    Bn = B_mat(n) 
+    kvv_ = kvv(ptv, N)
+    Bn = B_mat(n)
     return Bn.T @ kvv_ @ Bn
 
 def ptm_output_cov_mat(ptv, Mf, N):
     """Build an output covariance matrix using a given PTV and circuit PTM (new formula)"""
     _, k = np.log2(Mf.shape).astype(np.uint16)
-    kvv_ = kvv(ptv)
+    kvv_ = kvv(ptv, N)
     Bk = B_mat(k)
     return Bk.T @ Mf.T @ kvv_ @ Mf @ Bk
-
-def ptm_based_cov_mat(V, p_vec, N):
-    """Build a covariance matrix using a given PTV (old formula)"""
-    n = np.log2(V.size).astype(np.uint32)
-    C = np.zeros((n, n))
-    Bn = B_mat(n)
-    for q in range(2 ** n):
-        c = np.zeros((n, n))
-        for i in range(n):
-            for j in range(i):
-                pij = Bn[q, i] & Bn[q, j]
-                c[i, j] = pij - p_vec[i] * p_vec[j]
-        C += c * V[q]
-    return C

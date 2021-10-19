@@ -12,15 +12,14 @@ def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_pred
     rng = bs.SC_RNG()
     bs_mat = np.zeros((num_inputs, N), dtype=np.uint8)
     Pxs = np.zeros((samps, num_inputs))
-    vins = np.zeros((samps, 2 ** num_inputs))
     Pzs = np.zeros((samps, num_outputs))
+    vin = pm.get_vin_mc0(p_arr)
 
-    #Generate a set of vins
+    #Generate a set of independent bitstreams - Used to compare against ideal results
     for i in range(samps):
         for j in range(num_inputs):
             #bs_mat[j, :] = rng.bs_lfsr(N, p_arr[j], keep_rng=False, pack=False)
             bs_mat[j, :] = rng.bs_uniform(N, p_arr[j], keep_rng=False, pack=False)
-        vins[i, :] = pm.get_actual_vin(bs_mat)
         bs_mat_out = np.vstack(func(*np.split(bs_mat, bs_mat.shape[0], axis=0))[::-1])
         Pxs[i, :] = bs.bs_mean(bs_mat, bs_len=N)
         Pzs[i, :] = bs.bs_mean(bs_mat_out, bs_len=N)
@@ -28,21 +27,18 @@ def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_pred
         #Assert that we get the correct p_arr back out (just a test)
         #assert np.all(np.isclose(p_arr, pm.B_mat(num_inputs).T @ vins[i, :]))
 
-    px_cov = np.cov(Pxs.T)
-    vin_cov = np.cov(vins.T)
-    Bk = pm.B_mat(num_outputs)
-    A_mat = Bk.T @ Mf.T
-    ideal_out_cov = A_mat @ vin_cov @ A_mat.T #This is the equation we are testing
-    out_cov = np.cov(Pzs.T)
+    px_cov = np.cov(Pxs.T) #Covariance computed with inbuilt function
+    px_cov_ptv = pm.ptm_input_cov_mat(vin, N)
 
-    print("'A' Matrix: {}".format(A_mat))
     np.set_printoptions(linewidth=np.inf)
     print("Px cov: \n {}".format(px_cov)) #--> About 0 (all entries) for independent bitstreams, as expected
-    print("Vin cov: \n {}".format(vin_cov))
+    print("Px cov ptv: \n {}".format(px_cov_ptv)) #--> Variances match, and covariances are even closer to 0 (more exact)
+
+    ideal_out_cov = pm.ptm_output_cov_mat(vin, Mf, N)
+    out_cov = np.cov(Pzs.T)
 
     print("Ideal out cov: \n {}".format(ideal_out_cov))
     print("Actual out cov: \n {}".format(out_cov))
-    print(np.all(np.isclose(ideal_out_cov, out_cov)))
     if eq_predicted_cov is not None:
         print("Eq-predicted cov: \n {}".format(eq_predicted_cov(*p_arr, N) ** 2))
 
@@ -141,11 +137,12 @@ def hyper_and(x, y, N):
     return np.sqrt((x * (1-x) * y * (1-y)) / (N - 1))
 
 def variance_analysis_main():
-    plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)
+    #plot_variance(np.bitwise_and, ideal_sc_and, uniform_and, hyper_and, 15, 500)
     #print(test_hyper_vin(2047, 1000))
     #mux = lambda x, y, z: np.bitwise_or(np.bitwise_and(x, z), np.bitwise_and(y, np.bitwise_not(z)))
-    #func = lambda x, y: (np.bitwise_and(x, y), np.bitwise_or(x, y))
-    #lfsr_cov_mat_compare(mux, 3, 1, np.array([127/255, 63/255, 101/255]), 255, 1000)
+    func = lambda x, y: (np.bitwise_and(x, y), np.bitwise_or(x, y))
+    func_indep = lambda a, b, c, d: (np.bitwise_and(a, b), np.bitwise_or(c, d))
+    lfsr_cov_mat_compare(func_indep, 4, 2, np.array([127/255, 63/255, 13/255, 235/255]), 255, 100)
 
     #test
     #N = 255

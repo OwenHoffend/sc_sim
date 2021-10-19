@@ -4,6 +4,7 @@ import copy
 import numpy as np
 
 import sim.corr_preservation as cp
+import sim.PTM as pm
 
 class Polynomial:
     def _flstr_add(self, a, b):
@@ -233,86 +234,8 @@ def mat_to_latex(np_mat):
     latex_str += "\\end{bmatrix}"
     return latex_str
 
-if __name__ == "__main__":
-    pass
-    #Polynomial creation test:
-    #test_poly = Polynomial(poly_string="0.5(x1^1*x2^2)-0.5(x2^2*x1^1)+1.0(x2^2)")
-    #print(test_poly.poly)
-
-    #Test zero multiplication
-    #test_poly = Polynomial(poly_string="0.0(@^1)")
-    #test_poly2 = Polynomial(poly_string="0.5(x1^1)")
-    #res = test_poly * test_poly2
-    #print(res.poly)
-
-    #Sum test:
-    #test_poly = Polynomial(poly_string="0.5(x1^2*x2^2)-1.0(x1^1*x2^1)+1(x1^2*x2^2)+1(@)")
-    #test_poly2 = Polynomial(poly_string="0.3(x1^1*x2^1)-5(@)")
-    #res = test_poly + test_poly2
-
-    #Sub test:
-    #test_poly = Polynomial(poly_string="0.5(x1^1)+0.3(x1^2*x2^1)")
-    #test_poly2 = Polynomial(poly_string="0.1(x1^1)-5.0(@^1)")
-    #print(test_poly - test_poly2)
-
-    #Mul test:
-    #test_poly = Polynomial(poly_string="0.5(a^1)+2(@^1)")
-    #test_poly2 = Polynomial(poly_string="0.25(a^2*b^1)+0.5(a^1)+6(@^1)")
-    #res = test_poly2 ** 2
-    #print(test_poly.poly)
-    #print(test_poly2.poly)
-    #print(res.poly)
-
-    #Second mul test:
-    #test_poly = Polynomial(poly_string="1.0(a^1)+1.0(b^1)")
-    #test_poly2 = Polynomial(poly_string="1.0(b^1)+1.0(a^1)")
-    #res = test_poly * test_poly2
-    #print(res.poly)
-
-    #sub_scalar test:
-    #test_poly = Polynomial(poly_string="1.0(x1^1*x2^2)+1.0(x2^1*x1^1)")
-    #test_poly.sub_scalar("x2", 0.5)
-    #print(test_poly.poly)
-
-    #sub_scalar test2:
-    #test_poly = Polynomial(poly_string="0.5(x1^1*x2^2)-0.5(x2^2*x1^1)+1.0(x2^2)")
-    #test_poly.sub_scalar("x2", 0.5)
-    #print(test_poly.poly)
-
-    #get_latex test:
-    #test_poly = Polynomial(poly_string="0.5(x1^1*x2^2)-0.5(x2^2*x1^1)+1.0(x2^2)")
-    #print(test_poly.get_latex())
-
-    #Numpy multiplication test
-    #test_vec = np.array([[test_poly, test_poly2]], dtype=object)
-    #result = test_vec @ test_vec.T
-    #print(result[0,0].poly)
-
-    #vin_poly_bernoulli_mc0 test
-    #mat = vin_poly_bernoulli_mc0(4)
-    #print(mat)
-
-    #vin_poly_bernoulli_mc1 test
-    #mat = vin_poly_bernoulli_mc1(2, names=['p1', 'p2'])
-    #print(mat_to_latex(np.expand_dims(mat, axis=1)))
-
-    #vin_covmat_bernoulli test
-    #mat0 = vin_covmat_bernoulli(2)
-    #print(mat0)
-
-    #mat1 = vin_covmat_bernoulli(2, corr=1)
-    #print(mat_to_latex(mat1))
-
-    #Test using kronecker product to get vin for a general input correlation structure
-    #vin_2_a = vin_poly_bernoulli_mc1(2, names=['p0', 'p1'])
-    #vin_2_b = vin_poly_bernoulli_mc1(1, names=['s0'])
-    #vin = np.kron(vin_2_b, vin_2_a)
-    #print(mat_to_latex(np.expand_dims(vin, axis=1)))
-
-    #Test matrix product
-    #mat = np.array([
-    #    [1.0, 0],
-    #    [0.5, -0.3]
-    #])
-    #test = scalar_mat_poly(mat) @ vin_poly_bernoulli_mc0(1)
-    #print(mat_to_latex(np.expand_dims(test, axis=1)))
+def symbolic_cov_mat_bernoulli(Mf, num_inputs, num_ouputs, corr=0, custom=None):
+    Bk = pm.B_mat(num_ouputs)
+    vin_mat = vin_covmat_bernoulli(num_inputs, corr=corr, custom=custom)
+    A_mat = scalar_mat_poly((Mf @ Bk) * 1)
+    return A_mat.T @ vin_mat @ A_mat

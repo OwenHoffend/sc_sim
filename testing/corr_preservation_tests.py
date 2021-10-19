@@ -43,7 +43,7 @@ def test_get_vin_iterative():
     print(get_vin_iterative(p_vec, cov_mat, 6))
     print(cov_mat)
     print(cov_mat2)
-    print(ptm_based_cov_mat(V, p_vec, 6))
+    print(ptm_input_cov_mat(V, 6))
 
 def test_get_vin_mc1():
     print(get_vin_mc1(np.array([5/6, 3/6, 4/6])))
