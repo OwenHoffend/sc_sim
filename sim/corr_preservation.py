@@ -84,8 +84,22 @@ def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
         max_err = np.maximum(max_err, new_err)
     return max_err, err / (N - 1) ** n
 
-def err_uniform_rand(m, Mf1, Mf2, vin_func_c1, vin_func_c2):
-    """Compute the correlation error for gven circuit by generating a set of 
+def corr_uniform_rand_1layer(m, Mf1, vin_func_c1, c2, N):
+    """Compute the correlation error for given 1-layer circuit by generating a set of 
+        input vectors drawn from a uniform random distribution"""
+    n, k1 = np.log2(Mf1.shape).astype(np.uint16)
+    Px = np.zeros(n)
+
+    errs = np.zeros_like(c2)
+    for i in range(m):
+        Px = np.array([0.1, 0.1, 0.2, 0.1])
+        Vin = vin_func_c1(Px)
+        cout = get_output_corr_mat(Vin, Mf1, N, use_zscc=True)[1]
+        errs += cout
+    return errs / m
+
+def err_uniform_rand_2layer(m, Mf1, Mf2, vin_func_c1, vin_func_c2):
+    """Compute the correlation error for given 2-layer circuit by generating a set of 
         input vectors drawn from a uniform random distribution"""
     
     n, k1 = np.log2(Mf1.shape).astype(np.uint16)

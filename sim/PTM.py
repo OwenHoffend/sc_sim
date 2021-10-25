@@ -213,7 +213,7 @@ def get_output_corr_mat(Vin, Mf, N, use_zscc=True):
     return Vout, Cout
 
 def get_input_corr_mat(Vin, Mf, N):
-    """Using ZSCC, comput the input correlation matrix given an input PTV"""
+    """Using ZSCC, compute the input correlation matrix given an input PTV"""
     n, k = np.log2(Mf.shape).astype(np.uint16)
     Bn = B_mat(n)
 

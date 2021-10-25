@@ -157,24 +157,32 @@ def test_mat_prod():
     test = scalar_mat_poly(mat) @ vin_poly_bernoulli_mc0(1)
     print(mat_to_latex(np.expand_dims(test, axis=1)))
 
+def xor_4_2_under_c1():
+    """Test the output correlation of a pair of xor gates under +1 correlation"""
+    Mf = pm.get_func_mat(cir.xor_4_to_2, 4, 2)
+    print(Mf)
+    xor_cov = symbolic_cov_mat_bernoulli(Mf, 4, 2, corr=1)
+    print(mat_to_latex(xor_cov))
+
 def symbolic_manip_main():
     """Old stuff that was in the main function of variance_analysis.py - not sorted"""
     #var = sm.symbolic_cov_mat_bernoulli(pm.get_func_mat(cir.and_4_to_2, 4, 2), 4, 2, corr=1)
     #print(sm.mat_to_latex(var))
     
-    vin_top = vin_poly_bernoulli_mc1(2, names=['p0', 'p2'])
-    print(mat_to_latex(np.expand_dims(vin_top, axis=1)))
-    vin_bot = vin_poly_bernoulli_mc1(2, ordering=[1, 0], names=['p1', 'p3'])
-    print(mat_to_latex(np.expand_dims(vin_bot, axis=1)))
-    vin = np.kron(vin_top, vin_bot)
-    print(mat_to_latex(np.expand_dims(vin, axis=1)))
+    #vin_top = vin_poly_bernoulli_mc1(2, names=['p0', 'p2'])
+    #print(mat_to_latex(np.expand_dims(vin_top, axis=1)))
+    #vin_bot = vin_poly_bernoulli_mc1(2, ordering=[1, 0], names=['p1', 'p3'])
+    #print(mat_to_latex(np.expand_dims(vin_bot, axis=1)))
+    #vin = np.kron(vin_top, vin_bot)
+    #print(mat_to_latex(np.expand_dims(vin, axis=1)))
 
-    and_cov = symbolic_cov_mat_bernoulli(pm.get_func_mat(cir.and_4_to_2, 4, 2), 4, 2, custom=vin)
-    print(mat_to_latex(and_cov))
+    #and_cov = symbolic_cov_mat_bernoulli(pm.get_func_mat(cir.and_4_to_2, 4, 2), 4, 2, custom=vin)
+    #print(mat_to_latex(and_cov))
+    
     #plot_mux_maj()
     #print(mat_sub_scalar(and_cov, 'p0', 0.5))
 
-    #print(mat_to_latex(sm.scalar_mat_poly(pm.get_func_mat(cir.even_odd_sorter_4, 4, 4) * 1)))
+    #print(mat_to_latex(scalar_mat_poly(pm.get_func_mat(cir.even_odd_sorter_4, 4, 4) * 1)))
 
     #sorter = symbolic_cov_mat_bernoulli(pm.get_func_mat(cir.even_odd_sorter_4, 4, 4), 4, 4, corr=1)
     #print(sm.mat_to_latex(sorter))

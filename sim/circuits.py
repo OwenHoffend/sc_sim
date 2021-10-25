@@ -152,13 +152,17 @@ def maj_4_to_1(s0, s1, x4, x3, x2, x1):
 def unbalanced_mux_2(s, x3, x2, x1):
     return mux_1(s, x1, x2), x3
 
-def robert_cross(s, x4, x3, x2, x1):
+def robert_cross_mux(s, x4, x3, x2, x1):
     x1, x2 = xor_4_to_2(x4, x3, x2, x1)
     return mux_1(s, x1, x2)
 
+def robert_cross_maj(s, x4, x3, x2, x1):
+    x1, x2 = xor_4_to_2(x4, x3, x2, x1)
+    return maj_1(s, x1, x2)
+
 def robert_cross_2(s, x8, x7, x6, x5, x4, x3, x2, x1):
-    r1 = robert_cross(s, x8, x7, x6, x5)
-    r2 = robert_cross(s, x4, x3, x2, x1)
+    r1 = robert_cross_mux(s, x8, x7, x6, x5)
+    r2 = robert_cross_mux(s, x4, x3, x2, x1)
     return r1, r2
 
 def mux_3(s, x6, x5, x4, x3, x2, x1):
@@ -176,23 +180,47 @@ def mux_p(x, y, p):
         z[i] = x_un[i] if r > p else y_un[i]
     return np.packbits(z)
 
-def mux_p_cuda(x, y, p):
-    global mask 
-    mask = torch.cuda.ByteTensor([2 ** x for x in range(8)])
+def mux_p_cuda(x, y, rands):
+    #global mask 
+    #mask = torch.cuda.ByteTensor([2 ** x for x in range(8)])
 
     xs = x.shape[0]
     ys = y.shape[0]
     assert xs == ys
-    rands = torch.cuda.FloatTensor(xs << 3).uniform_() > p
-    rands = torch.sum(rands.view(xs, 8) * mask, 1)
+    #rands = torch.cuda.FloatTensor(xs << 3).uniform_() > p
+    #rands = torch.sum(rands.view(xs, 8) * mask, 1)
     top = torch.bitwise_and(x, rands)
     bot = torch.bitwise_and(y, torch.bitwise_not(rands))
     return torch.bitwise_or(top, bot)
 
-def robert_cross(x11, x12, x21, x22):
+def maj_p_cuda(x, y, rands):
+    #FIX THIS ASAP
+    #global mask 
+    #mask = torch.cuda.ByteTensor([2 ** x for x in range(8)])
+
+    xs = x.shape[0]
+    ys = y.shape[0]
+    assert xs == ys
+    and_ = torch.bitwise_and(x, y)
+    or_ = torch.bitwise_or(x, y)
+    top = torch.bitwise_and(and_, torch.bitwise_not(rands))
+    bot = torch.bitwise_and(or_, rands)
+    return torch.bitwise_or(top, bot)
+
+def robert_cross_mux_cuda(rands, x11, x12, x21, x22):
     xor1 = torch.bitwise_xor(x11, x22)
     xor2 = torch.bitwise_xor(x12, x21)
-    return mux_p_cuda(xor1, xor2, 0.5)
+    return mux_p_cuda(xor1, xor2, rands)
+
+def robert_cross_maj_cuda(rands, x11, x12, x21, x22):
+    xor1 = torch.bitwise_xor(x11, x22)
+    xor2 = torch.bitwise_xor(x12, x21)
+    return maj_p_cuda(xor1, xor2, rands)
+
+def max_pool_cuda(x11, x12, x21, x22):
+    or1 = torch.bitwise_or(x11, x22)
+    or2 = torch.bitwise_or(x12, x21)
+    return torch.bitwise_or(or1, or2)
 
 def robert_cross_3x3_to_2x2(p_arr, N):
     #Generate input bitstreams with ZSCC = 1 at p_arr
@@ -201,27 +229,50 @@ def robert_cross_3x3_to_2x2(p_arr, N):
     bs_arr = [torch.from_numpy(rng.bs_uniform(N, p)).to(device) for p in p_arr]
     #print(bs.mc_scc(bs_arr, use_zscc=True, bs_len=N)) #Verify that it is indeed mutually correlated at 1
 
-    rc1 = robert_cross(bs_arr[0], bs_arr[1], bs_arr[3], bs_arr[4])
-    rc2 = robert_cross(bs_arr[1], bs_arr[2], bs_arr[4], bs_arr[5])
-    rc3 = robert_cross(bs_arr[3], bs_arr[4], bs_arr[6], bs_arr[7])
-    rc4 = robert_cross(bs_arr[4], bs_arr[5], bs_arr[7], bs_arr[8])
+    rc1 = robert_cross_mux_cuda(bs_arr[0], bs_arr[1], bs_arr[3], bs_arr[4])
+    rc2 = robert_cross_mux_cuda(bs_arr[1], bs_arr[2], bs_arr[4], bs_arr[5])
+    rc3 = robert_cross_mux_cuda(bs_arr[3], bs_arr[4], bs_arr[6], bs_arr[7])
+    rc4 = robert_cross_mux_cuda(bs_arr[4], bs_arr[5], bs_arr[7], bs_arr[8])
     rc_torch = torch.tensor([rc1, rc2, rc3, rc4]).to(device)
     return bs.get_corr_mat_cuda(rc_torch, bs_len=N, use_zscc=True)
 
-def robert_cross_img(img, N): #Img is greyscale
-    h, w = img.shape
-    rng = bs.SC_RNG()
-    img_bs = img_io.img_to_bs(img, rng.bs_uniform, bs_len=N) #Correlated at +1
-    img_bs = torch.from_numpy(img_bs).to(device)
+def robert_cross_img(img_bs, N, use_maj=False): #Img is greyscale
+    global mask
+    mask = torch.cuda.ByteTensor([2 ** x for x in range(8)])
+
+    h, w, _ = img_bs.shape
+    #Enable this code to load the image straight from this function instead of externally
+    #h, w = img.shape
+    #rng = bs.SC_RNG()
+    #img_bs = img_io.img_to_bs(img, rng.bs_uniform, bs_len=N) #Correlated at +1
+    #img_bs = torch.from_numpy(img_bs).to(device)
     #img_io.disp_img(img_io.bs_to_img(img_bs, bs.bs_mean))
 
     nb = N>>3
     rc_mat = torch.cuda.ByteTensor(h-1, w-1, nb).fill_(0)
+    xs = img_bs[0][0].shape[0] #EXTREMELY HACKY PLEASE REMOVE THIS
+    rands = torch.cuda.FloatTensor(xs << 3).uniform_() > 0.5 #Use the same set of random numbers for everything
+    rands = torch.sum(rands.view(xs, 8) * mask, 1)
+    if use_maj:
+        rcfunc = robert_cross_maj_cuda
+    else:
+        rcfunc = robert_cross_mux_cuda
     for i in range(h-1):
         for j in range(w-1):
-            rc_mat[i][j] = robert_cross(img_bs[i][j], img_bs[i][j+1], img_bs[i+1][j], img_bs[i+1][j+1])
-    #img_io.disp_img(img_io.bs_to_img(rc_mat, bs.bs_mean))
-    return bs.get_corr_mat_cuda(rc_mat.view((h-1)*(w-1), nb)).to(cpu).numpy()
+            rc_mat[i][j] = rcfunc(rands, img_bs[i][j], img_bs[i][j+1], img_bs[i+1][j], img_bs[i+1][j+1])
+
+    #img_io.disp_img(img_io.bs_to_img(rc_mat.cpu().detach().numpy(), bs.bs_mean))
+    #return bs.get_corr_mat_cuda(rc_mat.view((h-1)*(w-1), nb)).to(cpu).numpy()
+    return rc_mat
+
+def max_pool_img(img_bs, N):
+    h, w, _ = img_bs.shape
+    nb = N>>3
+    mp_mat = torch.cuda.ByteTensor(h-1, w-1, nb).fill_(0)
+    for i in range(h-1):
+        for j in range(w-1):
+            mp_mat[i][j] = max_pool_cuda(img_bs[i][j], img_bs[i][j+1], img_bs[i+1][j], img_bs[i+1][j+1])
+    return mp_mat
 
 def cnn_kernel_3x3(img, kernel, N):
     """Unipolar kernel convolve -> AND gates

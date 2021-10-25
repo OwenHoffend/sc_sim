@@ -80,7 +80,7 @@ def test_mux_corr_pres():
 
 def test_xor_corr_pres():
     Mf = get_func_mat(xor_4_to_2, 4, 2)
-    print("{}\n{}".format(*err_sweep(20, Mf, 1)))
+    print(corr_uniform_rand_1layer(1, Mf, get_vin_mc1, np.ones((2, 2)), 10000))
 
 def test_unbalanced_mux_corr_pres():
     Mf1 = reduce_func_mat(get_func_mat(unbalanced_mux_2, 4, 2), 3, 0.5)
