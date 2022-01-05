@@ -84,19 +84,30 @@ def err_sweep(N, Mf, vin_type, err_type='e', Mf2=None):
         max_err = np.maximum(max_err, new_err)
     return max_err, err / (N - 1) ** n
 
-def corr_uniform_rand_1layer(m, Mf1, vin_func_c1, c2, N):
-    """Compute the correlation error for given 1-layer circuit by generating a set of 
+def corr_uniform_rand_1layer(m, Mf1, vin_func_c1):
+    """Compute the correlation matrix for given 1-layer circuit by generating a set of 
         input vectors drawn from a uniform random distribution"""
     n, k1 = np.log2(Mf1.shape).astype(np.uint16)
     Px = np.zeros(n)
 
-    errs = np.zeros_like(c2)
+    cout_avg = np.zeros((k1, k1))
+    m_actual = m
     for i in range(m):
-        Px = np.array([0.1, 0.1, 0.2, 0.1])
-        Vin = vin_func_c1(Px)
-        cout = get_output_corr_mat(Vin, Mf1, N, use_zscc=True)[1]
-        errs += cout
-    return errs / m
+
+        #For anything with 0.5 input on one:
+        Px = np.random.rand(n-1)
+        Vin = np.kron(get_vin_mc1(np.array([0.5,])), vin_func_c1(Px))
+
+        #Px = np.random.rand((n/2).astype(np.int32))
+        #Px = np.concatenate((Px, 1-Px)) #HACK for MAJ-based absolute subtract
+        #Vin = vin_func_c1(Px)
+        cout = ptm_output_corr_mat(Vin, Mf1)
+        if np.any(np.isnan(cout)): #Skip bad probability values
+            m_actual -= 1
+            continue
+        #print(cout)
+        cout_avg += cout
+    return cout_avg / m_actual
 
 def err_uniform_rand_2layer(m, Mf1, Mf2, vin_func_c1, vin_func_c2):
     """Compute the correlation error for given 2-layer circuit by generating a set of 

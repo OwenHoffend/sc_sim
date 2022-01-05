@@ -10,7 +10,13 @@ def load_img(path, gs=False):
         return np.array(image)[0:height, 0:width, 0]
     return np.array(image)
 
-def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, scale=True):
+def cifar_unpickle(file): #For CIFAR-10
+    import pickle
+    with open(file, 'rb') as fo:
+        dict = pickle.load(fo, encoding='bytes')
+    return dict[b'data']
+
+def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, inv=False, scale=True):
     """Convert a single image chnanel into an stochastic bitstream of the specified length.
     bs_gen_func is a bitstream generating function that takes in n (number of bits) and p, 
     the desired probability. If correlated is True, use the same RNG for all pixels"""
@@ -20,9 +26,9 @@ def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, scale=True)
     for i in range(height): #Populate the bitstream array
         for j in range(width):
             if scale:
-                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]) / 255.0, keep_rng=correlated)
+                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]) / 255.0, keep_rng=correlated, inv=inv)
             else:
-                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]), keep_rng=correlated)
+                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]), keep_rng=correlated, inv=inv)
     return bs
 
 def bs_to_img(bs, bs_mean_func, scaling=1):
@@ -32,8 +38,8 @@ def bs_to_img(bs, bs_mean_func, scaling=1):
     for i in range(height): #Populate the bitstream array
         for j in range(width):
             #Default pixel-value encoding is p * 255, might want to try others
-            img[i][j] = np.rint(bs_mean_func(bs[i][j]) * 255).astype(np.uint8)
-    return img * scaling
+            img[i][j] = np.rint(bs_mean_func(bs[i][j]) * 255.0 * scaling).astype(np.uint8)
+    return img
 
 def img_mse(img1, img2):
     """Compute the MSE between two images.

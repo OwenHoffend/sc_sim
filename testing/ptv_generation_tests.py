@@ -13,6 +13,11 @@ def test_ptv_genfunc(v_c, n=4, N=500000):
     c_mat = get_corr_mat_np(bs_mat)
     print(np.round(c_mat, 3))
 
+def test_ptv_to_corr(v_c, n=4, N=100):
+    p_arr = np.random.uniform(size=n)
+    ptv = v_c(p_arr)
+    print(ptm_input_corr_mat(ptv))
+
 def test_0_ptv():
     test_ptv_genfunc(get_vin_mc0)
 

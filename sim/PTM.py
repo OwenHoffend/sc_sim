@@ -7,7 +7,13 @@ cpu = torch.device("cpu")
 
 def bin_array(num, m):
     """Convert a positive integer num into an m-bit bit vector"""
-    return np.array(list(np.binary_repr(num).zfill(m))).astype(bool)
+    return np.array(list(np.binary_repr(num).zfill(m))).astype(bool)[::-1] #Changed to [::-1] here to enforce ordering globally (12/29/2021)
+
+def int_array(bmat):
+    "Convert a bin_array back to an int one"
+    _, n = bmat.shape
+    bmap = np.array([1 << x for x in range(n)])
+    return bmat @ bmap
 
 B_mat_dict = {}
 def B_mat(n, cuda=False):
@@ -16,8 +22,7 @@ def B_mat(n, cuda=False):
         return B_mat_dict[n]
     B = np.zeros((2 ** n, n), dtype=bool)
     for i in range(2 ** n):
-        #B[i][:] = bin_array(i, n)[::-1] #Might cause issues with endianness... right now it's 1 --> [True, False, False]
-        B[i][:] = bin_array(i, n) #The old one is the line above
+        B[i][:] = bin_array(i, n)
     if cuda:
         B = torch.tensor(B.astype(np.float32)).to(device)
     B_mat_dict[n] = B
@@ -93,6 +98,22 @@ def get_vin_mc1(Pin):
         Vin[i] = Pin[Pin_sorted[k - 1]] - Pin[Pin_sorted[k]]
     return np.round(Vin, 12)
 
+def get_vin_mc1_paper(Pin):
+    """Generates PTV for bitstreams mutually correlated with SCC=1 according to the equation in the paper"""
+    n = Pin.size
+    Bn = B_mat(n)
+    Vin = np.zeros(2 ** n)
+    for i in range(2 ** n):
+        r1 = set([1,])
+        r0 = set([0,])
+        for j in range(n):
+            if Bn[i, j]:
+                r1.add(Pin[j])
+            else:
+                r0.add(Pin[j])
+        Vin[i] = max(0, min(r1) - max(r0))
+    return np.round(Vin, 12)
+
 def get_vin_mc1_cuda(Pin):
     b, n = Pin.shape
     Vin = torch.cuda.FloatTensor(b, 2 ** n).fill_(0)
@@ -110,6 +131,8 @@ def get_vin_mc1_cuda(Pin):
 
 def get_vin_mcn1(Pin):
     """Generates a Vin vector for bitstreams mutually correlated with ZSCC=-1"""
+    if np.sum(Pin) > 1:
+        return None
     n = Pin.size
     Vin = np.zeros(2 ** n)
     Vin[0] = 1 - np.sum(Pin)
@@ -147,6 +170,17 @@ def get_vin_mc0_cuda_test(Pin):
     Bn = B_mat(n, cuda=True)
     return torch.prod(Bn * Pin + (1 - Bn) * (1 - Pin), 1)
 
+def get_vin_mc_any(Pin, c):
+    if c < 0:
+        v_pm1 = get_vin_mcn1(Pin)
+        if v_pm1 is None:
+            return None
+    else:
+        v_pm1 = get_vin_mc1_paper(Pin)
+    v_0 = get_vin_mc0(Pin)
+    c = abs(c)
+    return (1-c) * v_0 + c * v_pm1
+
 def sample_from_ptv(ptv, N):
     """Uniformly sample N bitstream samples (each of width n) from a given PTV"""
     n = int(np.log2(ptv.shape[0]))
@@ -155,7 +189,30 @@ def sample_from_ptv(ptv, N):
         sel = np.random.choice(ptv.shape[0], p=ptv)
         bs_mat[:, i] = bin_array(sel, n)
     return bs_mat
-    
+
+def deterministic_sample_from_ptv(ptv, N):
+    """Create N bitstream samples (each of width n) from a given PTV, with a deterministic number of each possible pattern"""
+    n = int(np.log2(ptv.shape[0]))
+    sample_nums = np.round(ptv * N)
+    N_new = np.sum(sample_nums).astype(np.uint32)
+    bs_mat = np.zeros((n, N_new), dtype=np.uint8)
+    j = 0
+    i = 0
+    while i < N_new:
+        if sample_nums[j] != 0:
+            sample_nums[j] -= 1
+            bs_mat[:, i] = bin_array(j, n)
+            i += 1
+        else:
+            j += 1
+    return bs_mat
+
+def PTV_swap_cols(ptv, swap_inds):
+    n_2 = ptv.size
+    Bn = B_mat(np.log2(n_2))
+    ptv_swap_inds = int_array(Bn[:, swap_inds])
+    return ptv[ptv_swap_inds]
+
 #----------------------------------------------------------------------------------#
 # PTM GENERATION & MANIPULATION
 #----------------------------------------------------------------------------------#
@@ -179,6 +236,7 @@ def get_func_mat(func, n, k):
 def reduce_func_mat(Mf, idx, p):
     """Reduce a PTM matrix with a known probability value on one input"""
     n, k = np.log2(Mf.shape).astype(np.uint16)
+    print("Warning, reduce_func_mat is known to cause incorrectness with Kvv calculations")
     ss1, ss2 = [], []
     for i in range(2 ** n):
         if i % (2 ** (idx + 1)) < 2 ** idx:
@@ -227,27 +285,65 @@ def get_input_corr_mat(Vin, Mf, N):
             Cin[i][j] = bs.bs_zscc_ovs(Pin[i], Pin[j], No_in[i][j], N)
     return Cin
 
-def kvv(ptv, N):
+def get_corr_mat_paper(ptv):
+    n = int(np.log2(ptv.size))
+    Bn = B_mat(n)
+    P = Bn.T @ ptv
+    C = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            p_uncorr = P[i] * P[j]
+            cov = (Bn[:, i] * Bn[:, j]) @ ptv - p_uncorr
+            if cov > 0:
+                C[i, j] = cov / (np.minimum(P[i], P[j]) - p_uncorr)
+            else:
+                C[i, j] = cov / (p_uncorr - np.maximum(P[i] + P[j] - 1, 0))
+    return C
+
+def kvv(ptv):
     """Helper function for ptm_input_cov_mat and ptm_output_cov_mat"""
     n_2 = ptv.size
     diag_mask = 1 - np.eye(n_2)
     ptv_mat = ptv.reshape((n_2, 1))
     covs = -(ptv_mat @ ptv_mat.T) * diag_mask
     vars_ = np.diag(ptv * (1 - ptv))
-    return (covs + vars_) / N
+    return covs + vars_
 
-def ptm_input_cov_mat(ptv, N):
+def ptm_input_cov_mat(ptv):
     """Build a covariance matrix using a given PTV (new formula)
         Uses the Bernoulli Model"""
     n_2 = ptv.size
     n = np.log2(n_2).astype(np.uint16)
-    kvv_ = kvv(ptv, N)
+    kvv_ = kvv(ptv)
     Bn = B_mat(n)
     return Bn.T @ kvv_ @ Bn
 
-def ptm_output_cov_mat(ptv, Mf, N):
+def ptm_output_cov_mat(ptv, Mf):
     """Build an output covariance matrix using a given PTV and circuit PTM (new formula)"""
     _, k = np.log2(Mf.shape).astype(np.uint16)
-    kvv_ = kvv(ptv, N)
+    kvv_ = kvv(ptv)
     Bk = B_mat(k)
     return Bk.T @ Mf.T @ kvv_ @ Mf @ Bk
+
+def cov_to_scc(cov, ptv):
+    n, _ = cov.shape
+    C = np.zeros((n, n))
+    P = B_mat(n).T @ ptv
+    for i in range(n):
+        for j in range(n):
+            if cov[i, j] > 0:
+                if i == j:
+                    assert np.isclose(cov[i, j], (np.minimum(P[i], P[j]) - P[i] * P[j]))
+                C[i, j] = cov[i, j] / (np.minimum(P[i], P[j]) - P[i] * P[j])
+            else:
+                C[i, j] = cov[i, j] / (P[i] * P[j] - np.maximum(P[i] + P[j] - 1, 0))
+    return C
+
+def ptm_input_corr_mat(ptv):
+    cov = ptm_input_cov_mat(ptv)
+    return cov_to_scc(cov, ptv)
+
+def ptm_output_corr_mat(ptv, Mf):
+    cov_o = ptm_output_cov_mat(ptv, Mf)
+    ptv_o = Mf.T @ ptv
+    return cov_to_scc(cov_o, ptv_o)

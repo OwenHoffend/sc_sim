@@ -2,6 +2,8 @@ from sim.corr_preservation import *
 from sim.PTM import *
 from sim.circuits import *
 
+import functools
+
 def test_circular_shift_compare():
     shifts = 2
     n = 4
@@ -12,6 +14,49 @@ def test_circular_shift_compare():
     print(Mf)
     for i in range(1, 5):
         print(circular_shift_corr_sweep(5, 2, i))
+
+def cme_propagation():
+    #Test iterations of CME through a multi-layer circuit comprised of multiple instances of the same subcircuit
+    num_layers = 3
+    mf_xor = get_func_mat(np.bitwise_and, 2, 1)
+    mfs = []
+    #Generate individual layers
+    for layer in range(1, num_layers+1):
+        mfi = mf_xor
+        for _ in range(2 ** (layer - 1) - 1):
+            mfi = np.kron(mfi, mf_xor)
+        mfs.append(mfi)
+    #Generate layer splits
+#    for split in range(1, num_layers):
+#        Mf1 = functools.reduce(np.dot, reversed(mfs[split:num_layers]))
+#        Mf2 = functools.reduce(np.dot, reversed(mfs[0:split]))
+#        #err = err_uniform_rand_2layer(1000, Mf1, Mf2, get_vin_mc1, get_vin_mc1)
+#        #print(err)
+#
+#    print("break")
+#
+#def cme_prop_xor_chain():
+#    m1 = get_func_mat(np.bitwise_xor, 2, 1)
+#    m2 = get_func_mat(lambda x1, x2, x3: (np.bitwise_xor(x1, x2), x3), 3, 2)
+#    m3 = get_func_mat(lambda x1, x2, x3, x4: (np.bitwise_xor(x1, x2), x3, x4), 4, 3)
+#    m4 = get_func_mat(lambda x1, x2, x3, x4, x5: (np.bitwise_xor(x1, x2), x3, x4, x5), 5, 4)
+#    m5 = get_func_mat(lambda x1, x2, x3, x4, x5, x6: (np.bitwise_xor(x1, x2), x3, x4, x5, x6), 6, 5)
+#    m6 = get_func_mat(lambda x1, x2, x3, x4, x5, x6, x7: (np.bitwise_xor(x1, x2), x3, x4, x5, x6, x7), 7, 6)
+#    mfs = [m1, m2, m3, m4, m5, m6]
+    avg_corrs = []
+    for split in range(1, len(mfs)):
+        Mf1 = functools.reduce(np.dot, reversed(mfs[split:len(mfs)]))
+        Mf2 = functools.reduce(np.dot, reversed(mfs[0:split]))
+        #err = err_uniform_rand_2layer(1000, Mf1, Mf2, get_vin_mc1, get_vin_mc1)
+        corr = corr_uniform_rand_1layer(3000, Mf1, get_vin_mc1)
+        #print("Corr: \n{}".format(corr))
+        n = split + 1
+        avg_corr = np.sum(np.tril(corr, -1)) / (n ** 2 - n)
+        avg_corrs.append(avg_corr)
+        print("Avg Corr: {}".format(avg_corr))
+        #print("Err: {}".format(err))
+    avg_corrs.append(1)
+    return avg_corrs
 
 def test_B_mat():
     Vin = np.array([1/6, 0, 0, 1/6, 1/6, 1/6, 1/6, 1/6])
@@ -78,9 +123,25 @@ def test_mux_corr_pres():
     err_tot /= N
     print(err_tot)
 
+def test_and_corr_pres():
+    Mf = get_func_mat(and_4_to_2, 4, 2)
+    print(corr_uniform_rand_1layer(1000, Mf, get_vin_mc1))
+
+def test_and_2_corr_pres():
+    Mf = get_func_mat(np.bitwise_and, 2, 1)
+    print(corr_uniform_rand_1layer(1000, Mf, get_vin_mc0))
+
 def test_xor_corr_pres():
     Mf = get_func_mat(xor_4_to_2, 4, 2)
-    print(corr_uniform_rand_1layer(1, Mf, get_vin_mc1, np.ones((2, 2)), 10000))
+    print(corr_uniform_rand_1layer(1000, Mf, get_vin_mc0))
+
+def test_maj_abs_sub_corr_pres():
+    Mf = reduce_func_mat(get_func_mat(maj_abs_sub, 9, 2), 8, 0.5)
+    print(corr_uniform_rand_1layer(100000, Mf, get_vin_mc1))
+
+def test_roberts_cross_3_corr():
+    Mf = get_func_mat(robert_cross_3, 13, 3)
+    print(corr_uniform_rand_1layer(1000, Mf, get_vin_mc1))
 
 def test_unbalanced_mux_corr_pres():
     Mf1 = reduce_func_mat(get_func_mat(unbalanced_mux_2, 4, 2), 3, 0.5)

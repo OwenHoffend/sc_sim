@@ -279,14 +279,17 @@ def get_corr_mat(bs_arr, bs_len=None, use_zscc=False, use_cov=False):
                 Cij[i][j] = bs_scc(bs_arr[i], bs_arr[j], bs_len=bs_len)
     return Cij
 
-def get_corr_mat_np(bs_mat):
+def get_corr_mat_np(bs_mat, use_zscc=False):
     """Same as get_corr_mat, but accepts np array as input"""
     n, N = bs_mat.shape
     Cij = np.zeros((n, n))
     for i in range(n):
         for j in range(n):
             if i != j:
-                Cij[i][j] = bs_zscc(np.packbits(bs_mat[i, :]), np.packbits(bs_mat[j, :]), bs_len=N)
+                if use_zscc:
+                    Cij[i][j] = bs_zscc(np.packbits(bs_mat[i, :]), np.packbits(bs_mat[j, :]), bs_len=N)
+                else:
+                    Cij[i][j] = bs_scc(np.packbits(bs_mat[i, :]), np.packbits(bs_mat[j, :]), bs_len=N)
             else:
                 Cij[i][j] = 1
     return Cij

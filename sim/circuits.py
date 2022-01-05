@@ -18,6 +18,9 @@ def and_3(a, b, c):
     o3 = np.bitwise_and(a, c)
     return o1, o2, o3
 
+def and_3_to_1(a, b, c):
+    return np.bitwise_and(np.bitwise_and(a, b), c)
+
 def or_3(a, b, c):
     o1 = np.bitwise_or(a, b)
     o2 = np.bitwise_or(b, c)
@@ -37,6 +40,11 @@ def xor_4_to_2(x1, x2, x3, x4):
     o1 = np.bitwise_xor(x1, x2)
     o2 = np.bitwise_xor(x3, x4)
     return o1, o2
+
+#def xor_8_to_4(x1, x2, x3, x4, y1, y2, y3, y4):
+#    o1, o2 = xor_4_to_2(x1, x2, x3, x4)
+#    o3, o4 = xor_4_to_2(y1, y2, y3, y4)
+#    return o3, o4, o1, o2
 
 def xnor_4_to_2(x4, x3, x2, x1):
     o1 = np.bitwise_not(np.bitwise_xor(x1, x2))
@@ -77,6 +85,13 @@ def maj_1(s, x1, x2):
     a3 = np.bitwise_and(x1, x2)
     o1 = np.bitwise_or(a1, a2)
     return np.bitwise_or(o1, a3)
+
+def maj_abs_sub(s, x11, x22, x12, x21, x11_n, x22_n, x12_n, x21_n):
+    top = maj_1(s, x11, x22_n)
+    top_inv = maj_1(s, x11_n, x22)
+    bot = maj_1(s, x12, x21_n)
+    bot_inv = maj_1(s, x12_n, x21)
+    return np.bitwise_or(top, top_inv), np.bitwise_or(bot, bot_inv)
 
 #s0 is the smallest index of the arguments
 def mux_2(s0, s1, x1, x2, x3, x4):
@@ -165,6 +180,20 @@ def robert_cross_2(s, x8, x7, x6, x5, x4, x3, x2, x1):
     r2 = robert_cross_mux(s, x4, x3, x2, x1)
     return r1, r2
 
+def robert_cross_3(s, x12, x11, x10, x9, x8, x7, x6, x5, x4, x3, x2, x1):
+    r1 = robert_cross_mux(s, x4, x3, x2, x1)
+    r2 = robert_cross_mux(s, x8, x7, x6, x5)
+    r3 = robert_cross_mux(s, x12, x11, x10, x9)
+    return r1, r2, r3
+
+def roberts_cross_3_value(s, x12, x11, x10, x9, x8, x7, x6, x5, x4, x3, x2, x1):
+    def robert_cross_value(s, x4, x3, x2, x1):
+        return s * (np.abs(x4 - x3) + np.abs(x2 - x1))
+    r1 = robert_cross_value(s, x4, x3, x2, x1)
+    r2 = robert_cross_value(s, x8, x7, x6, x5)
+    r3 = robert_cross_value(s, x12, x11, x10, x9)
+    return r1, r2, r3
+
 def mux_3(s, x6, x5, x4, x3, x2, x1):
     m1 = mux_1(s, x2, x1)
     m2 = mux_1(s, x4, x3)
@@ -217,6 +246,26 @@ def robert_cross_maj_cuda(rands, x11, x12, x21, x22):
     xor2 = torch.bitwise_xor(x12, x21)
     return maj_p_cuda(xor1, xor2, rands)
 
+def robert_cross_mux_cuda_nx(rands, rands2, x11, x12, x21, x22, x11_n, x12_n, x21_n, x22_n):
+    """No-xor version of rober_cross_mux_cuda"""
+    top = maj_p_cuda(x11, x22_n, rands)
+    top_inv = maj_p_cuda(x11_n, x22, rands)
+    top_max = torch.bitwise_or(top, top_inv)
+    bot = maj_p_cuda(x12, x21_n, rands)
+    bot_inv = maj_p_cuda(x12_n, x21, rands)
+    bot_max = torch.bitwise_or(bot, bot_inv)
+    return mux_p_cuda(top_max, bot_max, rands2)
+
+def robert_cross_maj_cuda_nx(rands, rands2, x11, x12, x21, x22, x11_n, x12_n, x21_n, x22_n):
+    """No-xor version of rober_cross_maj_cuda"""
+    top = maj_p_cuda(x11, x22_n, rands)
+    top_inv = maj_p_cuda(x11_n, x22, rands)
+    top_max = torch.bitwise_or(top, top_inv)
+    bot = maj_p_cuda(x12, x21_n, rands)
+    bot_inv = maj_p_cuda(x12_n, x21, rands)
+    bot_max = torch.bitwise_or(bot, bot_inv)
+    return maj_p_cuda(top_max, bot_max, rands2)
+
 def max_pool_cuda(x11, x12, x21, x22):
     or1 = torch.bitwise_or(x11, x22)
     or2 = torch.bitwise_or(x12, x21)
@@ -236,7 +285,7 @@ def robert_cross_3x3_to_2x2(p_arr, N):
     rc_torch = torch.tensor([rc1, rc2, rc3, rc4]).to(device)
     return bs.get_corr_mat_cuda(rc_torch, bs_len=N, use_zscc=True)
 
-def robert_cross_img(img_bs, N, use_maj=False): #Img is greyscale
+def robert_cross_img(img_bs, N, no_xor=False, img_bs_inv=None, use_maj=False): #Img is greyscale
     global mask
     mask = torch.cuda.ByteTensor([2 ** x for x in range(8)])
 
@@ -253,13 +302,27 @@ def robert_cross_img(img_bs, N, use_maj=False): #Img is greyscale
     xs = img_bs[0][0].shape[0] #EXTREMELY HACKY PLEASE REMOVE THIS
     rands = torch.cuda.FloatTensor(xs << 3).uniform_() > 0.5 #Use the same set of random numbers for everything
     rands = torch.sum(rands.view(xs, 8) * mask, 1)
+
+    if no_xor:
+        rands2 = torch.cuda.FloatTensor(xs << 3).uniform_() > 0.5 #Use the same set of random numbers for everything
+        rands2 = torch.sum(rands2.view(xs, 8) * mask, 1)
     if use_maj:
-        rcfunc = robert_cross_maj_cuda
+        if no_xor:
+            rcfunc = robert_cross_maj_cuda_nx
+        else:
+            rcfunc = robert_cross_maj_cuda
     else:
-        rcfunc = robert_cross_mux_cuda
+        if no_xor:
+            rcfunc = robert_cross_mux_cuda_nx
+        else:
+            rcfunc = robert_cross_mux_cuda
     for i in range(h-1):
         for j in range(w-1):
-            rc_mat[i][j] = rcfunc(rands, img_bs[i][j], img_bs[i][j+1], img_bs[i+1][j], img_bs[i+1][j+1])
+            if no_xor:
+                rc_mat[i][j] = rcfunc(rands, rands2, img_bs[i][j], img_bs[i][j+1], img_bs[i+1][j], img_bs[i+1][j+1], \
+                img_bs_inv[i][j], img_bs_inv[i][j+1], img_bs_inv[i+1][j], img_bs_inv[i+1][j+1])
+            else:
+                rc_mat[i][j] = rcfunc(rands, img_bs[i][j], img_bs[i][j+1], img_bs[i+1][j], img_bs[i+1][j+1])
 
     #img_io.disp_img(img_io.bs_to_img(rc_mat.cpu().detach().numpy(), bs.bs_mean))
     #return bs.get_corr_mat_cuda(rc_mat.view((h-1)*(w-1), nb)).to(cpu).numpy()
@@ -268,9 +331,9 @@ def robert_cross_img(img_bs, N, use_maj=False): #Img is greyscale
 def max_pool_img(img_bs, N):
     h, w, _ = img_bs.shape
     nb = N>>3
-    mp_mat = torch.cuda.ByteTensor(h-1, w-1, nb).fill_(0)
-    for i in range(h-1):
-        for j in range(w-1):
+    mp_mat = torch.cuda.ByteTensor(h-2, w-2, nb).fill_(0)
+    for i in range(h-2):
+        for j in range(w-2):
             mp_mat[i][j] = max_pool_cuda(img_bs[i][j], img_bs[i][j+1], img_bs[i+1][j], img_bs[i+1][j+1])
     return mp_mat
 

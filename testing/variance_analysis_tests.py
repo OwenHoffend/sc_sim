@@ -5,40 +5,35 @@ import sim.PTM as pm
 from test_main import profile
 
 @profile
-def lfsr_cov_mat_compare(func, num_inputs, num_outputs, p_arr, N, samps, eq_predicted_cov=None):
+def lfsr_corr_mat_compare(func, num_inputs, num_outputs, p_arr, N, eq_predicted_cov=None):
     """Compare the actual output covariance matrix for a set of lfsr-generated input bitstreams
         to the theoretical one predicted based on the computed input covariance matrix"""
     Mf = pm.get_func_mat(func, num_inputs, num_outputs)
     rng = bs.SC_RNG()
     bs_mat = np.zeros((num_inputs, N), dtype=np.uint8)
-    Pxs = np.zeros((samps, num_inputs))
-    Pzs = np.zeros((samps, num_outputs))
     vin = pm.get_vin_mc0(p_arr)
 
     #Generate a set of independent bitstreams - Used to compare against ideal results
-    for i in range(samps):
-        for j in range(num_inputs):
-            #bs_mat[j, :] = rng.bs_lfsr(N, p_arr[j], keep_rng=False, pack=False)
-            bs_mat[j, :] = rng.bs_uniform(N, p_arr[j], keep_rng=False, pack=False)
-        bs_mat_out = np.vstack(func(*np.split(bs_mat, bs_mat.shape[0], axis=0))[::-1])
-        Pxs[i, :] = bs.bs_mean(bs_mat, bs_len=N)
-        Pzs[i, :] = bs.bs_mean(bs_mat_out, bs_len=N)
+    for i in range(num_inputs):
+        #bs_mat[j, :] = rng.bs_lfsr(N, p_arr[j], keep_rng=False, pack=False)
+        bs_mat[i, :] = rng.bs_uniform(N, p_arr[i], keep_rng=False, pack=False)
+    bs_mat_out = np.vstack(func(*np.split(bs_mat, bs_mat.shape[0], axis=0))[::-1])
 
         #Assert that we get the correct p_arr back out (just a test)
         #assert np.all(np.isclose(p_arr, pm.B_mat(num_inputs).T @ vins[i, :]))
 
-    px_cov = np.cov(Pxs.T) #Covariance computed with inbuilt function
-    px_cov_ptv = pm.ptm_input_cov_mat(vin, N)
+    in_corr_actual = bs.get_corr_mat_np(bs_mat)
+    in_corr_ideal = pm.ptm_input_corr_mat(vin)
 
     np.set_printoptions(linewidth=np.inf)
-    print("Px cov: \n {}".format(px_cov)) #--> About 0 (all entries) for independent bitstreams, as expected
-    print("Px cov ptv: \n {}".format(px_cov_ptv)) #--> Variances match, and covariances are even closer to 0 (more exact)
+    print("Ideal in corr: \n {}".format(in_corr_ideal)) #--> Variances match, and covariances are even closer to 0 (more exact)
+    print("Actual in corr: \n {}".format(in_corr_actual)) #--> About 0 (all entries) for independent bitstreams, as expected
 
-    ideal_out_cov = pm.ptm_output_cov_mat(vin, Mf, N)
-    out_cov = np.cov(Pzs.T)
+    out_corr_actual = bs.get_corr_mat_np(bs_mat_out)
+    out_corr_ideal = pm.ptm_output_corr_mat(vin, Mf)
 
-    print("Ideal out cov: \n {}".format(ideal_out_cov))
-    print("Actual out cov: \n {}".format(out_cov))
+    print("Ideal out corr: \n {}".format(out_corr_ideal))
+    print("Actual out corr: \n {}".format(out_corr_actual))
     if eq_predicted_cov is not None:
         print("Eq-predicted cov: \n {}".format(eq_predicted_cov(*p_arr, N) ** 2))
 
@@ -142,7 +137,7 @@ def variance_analysis_main():
     #mux = lambda x, y, z: np.bitwise_or(np.bitwise_and(x, z), np.bitwise_and(y, np.bitwise_not(z)))
     func = lambda x, y: (np.bitwise_and(x, y), np.bitwise_or(x, y))
     func_indep = lambda a, b, c, d: (np.bitwise_and(a, b), np.bitwise_or(c, d))
-    lfsr_cov_mat_compare(func_indep, 4, 2, np.array([127/255, 63/255, 13/255, 235/255]), 255, 100)
+    lfsr_corr_mat_compare(func_indep, 4, 2, np.array([127/255, 63/255, 13/255, 235/255]), 1000)
 
     #test
     #N = 255
