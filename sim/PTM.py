@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch._C import _valgrind_supported_platform
 import sim.bitstreams as bs
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -176,7 +177,7 @@ def get_vin_mc_any(Pin, c):
         if v_pm1 is None:
             return None
     else:
-        v_pm1 = get_vin_mc1_paper(Pin)
+        v_pm1 = get_vin_mc1(Pin)
     v_0 = get_vin_mc0(Pin)
     c = abs(c)
     return (1-c) * v_0 + c * v_pm1
@@ -285,7 +286,7 @@ def get_input_corr_mat(Vin, Mf, N):
             Cin[i][j] = bs.bs_zscc_ovs(Pin[i], Pin[j], No_in[i][j], N)
     return Cin
 
-def get_corr_mat_paper(ptv):
+def get_corr_mat_paper(ptv, invalid_corr=1):
     n = int(np.log2(ptv.size))
     Bn = B_mat(n)
     P = Bn.T @ ptv
@@ -295,9 +296,13 @@ def get_corr_mat_paper(ptv):
             p_uncorr = P[i] * P[j]
             cov = (Bn[:, i] * Bn[:, j]) @ ptv - p_uncorr
             if cov > 0:
-                C[i, j] = cov / (np.minimum(P[i], P[j]) - p_uncorr)
+                norm = np.minimum(P[i], P[j]) - p_uncorr
             else:
-                C[i, j] = cov / (p_uncorr - np.maximum(P[i] + P[j] - 1, 0))
+                norm = p_uncorr - np.maximum(P[i] + P[j] - 1, 0)
+            if norm == 0:
+                C[i, j] = invalid_corr
+            else:
+                C[i, j] = cov / norm
     return C
 
 def kvv(ptv):

@@ -69,6 +69,9 @@ def or_4_to_2(x1, x3, x2, x4):
     o2 = np.bitwise_or(x3, x4)
     return o1, o2
 
+def or_4(x1, x3, x2, x4):
+    return np.bitwise_or(*or_4_to_2(x1, x3, x2, x4))
+
 def and_3_to_2(x1, x2, x3):
     o1 = np.bitwise_and(x1, x2)
     o2 = np.bitwise_and(x2, x3)
@@ -134,27 +137,6 @@ def insertion_sorter_4(x4, x3, x2, x1):
     l5_3, l5_2 = sorter_2(l4_3, l4_2)
     l6_4, l6_3 = sorter_2(l4_4, l5_3)
     return l6_4, l6_3, l5_2, l4_1
- 
-def mux_2_both_inv(s, x4, x3, x2, x1):
-    return mux_2(np.bitwise_not(s), x4, x3, x2, x1)
-
-def maj_2_both_inv(s, x4, x3, x2, x1):
-    return maj_2(np.bitwise_not(s), x4, x3, x2, x1)
-
-def mux_2_one_inv(s, x4, x3, x2, x1):
-    m1 = mux_1(np.bitwise_not(s), x2, x1)
-    m2 = mux_1(s, x4, x3)
-    return m1, m2
-
-def maj_2_one_inv(s, x4, x3, x2, x1):
-    m1 = maj_1(np.bitwise_not(s), x2, x1)
-    m2 = maj_1(s, x4, x3)
-    return m1, m2
-
-def mux_maj(s, x4, x3, x2, x1):
-    m1 = maj_1(s, x2, x1)
-    m2 = mux_1(np.bitwise_not(s), x4, x3)
-    return m1, m2
 
 def mux_4_to_1(s0, s1, x4, x3, x2, x1):
     m1, m2 = mux_2(s0, x4, x3, x2, x1)
@@ -167,32 +149,63 @@ def maj_4_to_1(s0, s1, x4, x3, x2, x1):
 def unbalanced_mux_2(s, x3, x2, x1):
     return mux_1(s, x1, x2), x3
 
-def robert_cross_mux(s, x4, x3, x2, x1):
-    x1, x2 = xor_4_to_2(x4, x3, x2, x1)
-    return mux_1(s, x1, x2)
+def robert_cross(s, x11, x22, x12, x21, maj=False):
+    xor1, xor2 = xor_4_to_2(x11, x22, x12, x21)
+    if maj:
+        return maj_1(s, xor1, xor2)
+    else:
+        return mux_1(s, xor1, xor2)
 
-def robert_cross_maj(s, x4, x3, x2, x1):
-    x1, x2 = xor_4_to_2(x4, x3, x2, x1)
-    return maj_1(s, x1, x2)
+def robert_cross_mp_l1(s,
+    x11, x12, x13, 
+    x21, x22, x23, 
+    x31, x32, x33
+):
+    xor1, xor2 = xor_4_to_2(x11, x22, x12, x21)
+    xor3, xor4 = xor_4_to_2(x12, x23, x13, x22)
+    xor5, xor6 = xor_4_to_2(x21, x32, x22, x31)
+    xor7, xor8 = xor_4_to_2(x22, x33, x23, x32)
+    return s, xor1, xor2, xor3, xor4, xor5, xor6, xor7, xor8
 
-def robert_cross_2(s, x8, x7, x6, x5, x4, x3, x2, x1):
-    r1 = robert_cross_mux(s, x8, x7, x6, x5)
-    r2 = robert_cross_mux(s, x4, x3, x2, x1)
-    return r1, r2
+def robert_cross_mp_l2(s, xor1, xor2, xor3, xor4, xor5, xor6, xor7, xor8, maj=False):
+    if maj:
+        func = maj_1
+    else:
+        func = mux_1
+    rc1 = func(s, xor1, xor2)
+    rc2 = func(s, xor3, xor4)
+    rc3 = func(s, xor5, xor6)
+    rc4 = func(s, xor7, xor8)
+    return rc1, rc2, rc3, rc4
 
-def robert_cross_3(s, x12, x11, x10, x9, x8, x7, x6, x5, x4, x3, x2, x1):
-    r1 = robert_cross_mux(s, x4, x3, x2, x1)
-    r2 = robert_cross_mux(s, x8, x7, x6, x5)
-    r3 = robert_cross_mux(s, x12, x11, x10, x9)
-    return r1, r2, r3
+def robert_cross_mp_l3(rc1, rc2, rc3, rc4):
+    return or_4(rc1, rc2, rc3, rc4)
 
-def roberts_cross_3_value(s, x12, x11, x10, x9, x8, x7, x6, x5, x4, x3, x2, x1):
-    def robert_cross_value(s, x4, x3, x2, x1):
-        return s * (np.abs(x4 - x3) + np.abs(x2 - x1))
-    r1 = robert_cross_value(s, x4, x3, x2, x1)
-    r2 = robert_cross_value(s, x8, x7, x6, x5)
-    r3 = robert_cross_value(s, x12, x11, x10, x9)
-    return r1, r2, r3
+def robert_cross_mp(s,
+    x11, x12, x13, 
+    x21, x22, x23, 
+    x31, x32, x33,
+    maj=False
+):
+    rc1 = robert_cross(s, x11, x22, x12, x21, maj=maj)
+    rc2 = robert_cross(s, x12, x23, x13, x22, maj=maj)
+    rc3 = robert_cross(s, x21, x32, x22, x31, maj=maj)
+    rc4 = robert_cross(s, x22, x33, x23, x32, maj=maj)
+    return or_4(rc1, rc2, rc3, rc4)
+
+def robert_cross_ideal(x11, x22, x12, x21):
+    return 0.5 * (np.abs(x11 - x22) + np.abs(x12 -x21))
+
+def robert_cross_mp_ideal(
+    x11, x12, x13, 
+    x21, x22, x23, 
+    x31, x32, x33
+):
+    rc1 = robert_cross_ideal(x11, x22, x12, x21)
+    rc2 = robert_cross_ideal(x12, x23, x13, x22)
+    rc3 = robert_cross_ideal(x21, x32, x22, x31)
+    rc4 = robert_cross_ideal(x22, x33, x23, x32)
+    return np.max(np.array([rc1, rc2, rc3, rc4]))
 
 def mux_3(s, x6, x5, x4, x3, x2, x1):
     m1 = mux_1(s, x2, x1)
@@ -270,20 +283,6 @@ def max_pool_cuda(x11, x12, x21, x22):
     or1 = torch.bitwise_or(x11, x22)
     or2 = torch.bitwise_or(x12, x21)
     return torch.bitwise_or(or1, or2)
-
-def robert_cross_3x3_to_2x2(p_arr, N):
-    #Generate input bitstreams with ZSCC = 1 at p_arr
-    rng = bs.SC_RNG()
-    #Generate bitstreams (uniform random for now)
-    bs_arr = [torch.from_numpy(rng.bs_uniform(N, p)).to(device) for p in p_arr]
-    #print(bs.mc_scc(bs_arr, use_zscc=True, bs_len=N)) #Verify that it is indeed mutually correlated at 1
-
-    rc1 = robert_cross_mux_cuda(bs_arr[0], bs_arr[1], bs_arr[3], bs_arr[4])
-    rc2 = robert_cross_mux_cuda(bs_arr[1], bs_arr[2], bs_arr[4], bs_arr[5])
-    rc3 = robert_cross_mux_cuda(bs_arr[3], bs_arr[4], bs_arr[6], bs_arr[7])
-    rc4 = robert_cross_mux_cuda(bs_arr[4], bs_arr[5], bs_arr[7], bs_arr[8])
-    rc_torch = torch.tensor([rc1, rc2, rc3, rc4]).to(device)
-    return bs.get_corr_mat_cuda(rc_torch, bs_len=N, use_zscc=True)
 
 def robert_cross_img(img_bs, N, no_xor=False, img_bs_inv=None, use_maj=False): #Img is greyscale
     global mask
@@ -380,10 +379,6 @@ def cnn_kernel_3x3(img, kernel, N):
     return bs.get_corr_mat_cuda(rc_mat.view((h-2)*(w-2), nb)).to(cpu).numpy()
 
 if __name__ == "__main__":
-    """Test robert_cross_3x3_to_2x2"""
-    #p_arr = [np.random.random() for _ in range(9)]
-    #print(robert_cross_3x3_to_2x2(p_arr, 32))
-
     """Test robert_cross_img"""
     #img = img_io.load_img("./img/lena_s2.jpg", gs=True)
     #out_c_mat = robert_cross_img(img, 16)
