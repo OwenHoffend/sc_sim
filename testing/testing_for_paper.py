@@ -95,6 +95,79 @@ def test_ptv_gen():
     assert uniform_ptv_test(hybrid2, m, 4, N)
     #(Works when the generated ptv is propery reordered)
 
+def test_mac_relu():
+    Mf1 = get_func_mat(mac_relu_l1, 7, 5)
+    Mf2 = get_func_mat(mac_relu_l2, 5, 2)
+    Mf3 = get_func_mat(mac_relu_l3, 2, 1)
+    Mf = Mf1 @ Mf2 @ Mf3
+    B7 = B_mat(7)
+    B5 = B_mat(5)
+    B2 = B_mat(2)
+    B1 = B_mat(1)
+    m = 100000
+    avg_err = 0.0
+    avg_cmat_l2 = np.zeros((5, 5))
+    avg_cmat_l3 = np.zeros((2, 2))
+    for i in range(m):
+        Px = np.random.uniform(size=2)
+        Pw = np.random.uniform(size=4)
+        correct = mac_relu_ideal(*np.append(Px, Pw))
+        vx = get_vin_mc1(Px)
+        vw = get_vin_mc1(Pw)
+        vs = get_vin_mc1(np.array([0.5,]))
+        vin = np.kron(vw, np.kron(vx, vs))
+
+        #No Reco
+        #pout = B1.T @ Mf.T @ vin
+        v_l1 = Mf1.T @ vin
+        v_l2 = Mf2.T @ v_l1
+        v_l3 = Mf3.T @ v_l2
+        avg_cmat_l2 += get_corr_mat_paper(v_l1)
+        avg_cmat_l3 += get_corr_mat_paper(v_l2)
+        pout = B1.T @ v_l3
+
+        #Reco after first layer
+        #p_l1 = B5.T @ Mf1.T @ vin
+        #pout = B1.T @ Mf3.T @ Mf2.T @ np.kron(get_vin_mc1(p_l1[1:]), vs)
+
+        #Reco after second layer
+        #p_l2 = B2.T @ Mf2.T @ Mf1.T @ vin
+        #pout = B1.T @ Mf3.T @ get_vin_mc1(p_l2)
+
+        avg_err += np.abs(correct - pout)
+        print(i)
+        #print("Idx: {}, pout: {}, correct: {}".format(i, pout, correct))
+    avg_err /= m
+    avg_cmat_l2 /= m
+    avg_cmat_l3 /= m
+    print("Average cmat_l2: \n {}".format(avg_cmat_l2))
+    print("Average cmat_l3: \n {}".format(avg_cmat_l3))
+    print("Average error: {}".format(avg_err))
+
+    #NO Reco, MUX: 0.05161954
+        #Average cmat_l2: 
+        # [[ 1.00000000e+00  1.39457119e-14  6.71349423e-15 -3.08205502e-15  6.15161246e-15]
+        # [ 1.39457119e-14  1.00000000e+00  7.71507903e-01  1.00000000e+00  7.71652468e-01]
+        # [ 6.71349423e-15  7.71507903e-01  1.00000000e+00  7.71290901e-01  1.00000000e+00]
+        # [-3.08205502e-15  1.00000000e+00  7.71290901e-01  1.00000000e+00  7.69962695e-01]
+        # [ 6.15161246e-15  7.71652468e-01  1.00000000e+00  7.69962695e-01  1.00000000e+00]]
+        #Average cmat_l3:
+        # [[1.         0.84584797]
+        # [0.84584797 1.        ]]
+    #NO Reco, MAJ: 0.00874883
+        #Average cmat_l2:
+        # [[ 1.00000000e+00  7.86355946e-15 -5.03920217e-16  5.85951633e-15 -9.13001049e-15]
+        # [ 7.86355946e-15  1.00000000e+00  7.72102776e-01  1.00000000e+00  7.71746858e-01]
+        # [-5.03920217e-16  7.72102776e-01  1.00000000e+00  7.72169371e-01  1.00000000e+00]
+        # [ 5.85951633e-15  1.00000000e+00  7.72169371e-01  1.00000000e+00  7.71575587e-01]
+        # [-9.13001049e-15  7.71746858e-01  1.00000000e+00  7.71575587e-01  1.00000000e+00]]
+        #Average cmat_l3:
+        # [[1.        0.9371958]
+        # [0.9371958 1.       ]]
+    #1st layer Reco, MUX: 0.01982983
+    #1st layer Reco, MAJ: 0.00975853
+    #2nd layer Reco (both): 1.41723438e-13
+
 def test_rc():
     #Full circuit
     Mf_rc = get_func_mat(robert_cross_mp, 10, 1)
@@ -250,5 +323,7 @@ def test_rc():
 #[1.44627072e-01 1.38600944e-01 1.32574816e-01 1.26548688e-01 1.20522560e-01 1.14496432e-01 1.08470304e-01 1.02444176e-01 9.64180477e-02 9.03919198e-02 8.43657918e-02 7.83396638e-02 7.23135358e-02 6.62874078e-02 6.02612798e-02 5.42351519e-02 4.82090239e-02 4.21828959e-02 3.61567679e-02 3.01306399e-02 2.41045119e-02 1.80783840e-02 1.20522560e-02 6.02612798e-03 6.93498599e-13]
 
 def testing_for_paper():
+    pass
     #test_ptv_gen()
-    test_rc()
+    #test_rc()
+    #test_mac_relu()

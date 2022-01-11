@@ -193,6 +193,28 @@ def robert_cross_mp(s,
     rc4 = robert_cross(s, x22, x33, x23, x32, maj=maj)
     return or_4(rc1, rc2, rc3, rc4)
 
+def mac_relu_l1(s, x1, x2, wp1, wp2, wn1, wn2):
+    a1p = np.bitwise_and(x1, wp1)
+    a2p = np.bitwise_and(x2, wp2)
+    a1n = np.bitwise_and(x1, wn1)
+    a2n = np.bitwise_and(x2, wn2)
+    return s, a1p, a2p, a1n, a2n
+
+def mac_relu_l2(s, a1p, a2p, a1n, a2n, maj=False):
+    if maj:
+        pos = maj_1(s, a1p, a2p)
+        neg = maj_1(s, a1n, a2n)
+    else:
+        pos = mux_1(s, a1p, a2p)
+        neg = mux_1(s, a1n, a2n)
+    return pos, neg
+
+def mac_relu_l3(pos, neg):
+    return np.bitwise_and(pos, np.bitwise_not(neg))
+
+def mac_relu_ideal(x1, x2, wp1, wp2, wn1, wn2):
+    return 0.5 * max(0.0, x1 * (wp1 - wn1) + x2 * (wp2 - wn2))
+
 def robert_cross_ideal(x11, x22, x12, x21):
     return 0.5 * (np.abs(x11 - x22) + np.abs(x12 -x21))
 
