@@ -371,10 +371,11 @@ if __name__ == "__main__":
     #print(bs_scc(bs5, bs6, bs_len=10))
 
     """Test mutually mc_scc"""
-    bs1 = np.packbits(np.array([1,1,1,0,0,0]))
-    bs2 = np.packbits(np.array([1,1,0,1,1,0]))
-    bs_arr = [bs1, bs2]
-    print(get_corr_mat(bs_arr, bs_len=6, use_zscc=True))
+    #bs1 = np.packbits(np.array([1,1,1,1,1,0]))
+    #bs2 = np.packbits(np.array([0,1,1,1,1,1]))
+    #bs3 = np.packbits(np.array([1,1,0,0,1,1]))
+    #bs_arr = [bs1, bs2, bs3]
+    #print(get_corr_mat(bs_arr, bs_len=6))
     #print(mc_scc(bs_arr, bs_len=6))
 
     """Test mutual correlation generation"""

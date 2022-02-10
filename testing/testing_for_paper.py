@@ -1,7 +1,5 @@
 import os
 import numpy as np
-from numpy.lib.npyio import load
-import sim.bitstreams as bs
 from sim.PTM import *
 from sim.bitstreams import *
 from sim.circuits import *
@@ -56,44 +54,44 @@ def uniform_ptv_test(v_c, m, n, N):
     return True
 
 def test_ptv_gen():
-    n = 5
-    m = 1000
+    n = 3
+    m = 100
     N = 1000
-    print("Testing +1 PTV generation")
-    assert uniform_ptv_test(get_vin_mc1_paper, m, n, N)
+    #print("Testing +1 PTV generation")
+    #assert uniform_ptv_test(get_vin_mc1_paper, m, n, N)
     #(Works always)
 
-    print("Testing 0 PTV generation")
-    assert uniform_ptv_test(get_vin_mc0, m, n, N)
+    #print("Testing 0 PTV generation")
+    #assert uniform_ptv_test(get_vin_mc0, m, n, N)
     #(Works on average, probably if satisfiable)
 
     print("Test -1 PTV generation")
-    assert uniform_ptv_test(get_vin_mcn1, m, n, N)
+    assert uniform_ptv_test(get_vin_mcn1_paper, m, n, N)
     #(Works always, if satisfiable)
 
-    print("Test any c PTV generation")
-    c = -0.3
-    func = lambda Px: get_vin_mc_any(Px, c)
-    assert uniform_ptv_test(func, m, n, N)
-    #(Works on average, probably if satisfiable)
-
-    print("Test hybrid (contiguous) PTV generation")
-    def hybrid1(Px):
-        S1 = get_vin_mc1(Px[0:3])
-        S2 = get_vin_mc1(Px[3:5])
-        return np.kron(S2, S1)
-    assert uniform_ptv_test(hybrid1, m, 5, N)
-    #(Works, but it appears that the kron is backwards from what I would expect)
-
-    print("Testing hybrid (non-contiguous) PTV generation")
-    def hybrid2(Px):
-        S1 = get_vin_mc1(np.array([Px[0], Px[2]]))
-        S2 = get_vin_mc1(np.array([Px[1], Px[3]]))
-        pre_swap = np.kron(S2, S1)
-        swap_inds = np.array([0, 2, 1, 3])
-        return PTV_swap_cols(pre_swap, swap_inds)
-    assert uniform_ptv_test(hybrid2, m, 4, N)
-    #(Works when the generated ptv is propery reordered)
+    #print("Test any c PTV generation")
+    #c = -0.3
+    #func = lambda Px: get_vin_mc_any(Px, c)
+    #assert uniform_ptv_test(func, m, n, N)
+    ##(Works on average, probably if satisfiable)
+#
+    #print("Test hybrid (contiguous) PTV generation")
+    #def hybrid1(Px):
+    #    S1 = get_vin_mc1(Px[0:3])
+    #    S2 = get_vin_mc1(Px[3:5])
+    #    return np.kron(S2, S1)
+    #assert uniform_ptv_test(hybrid1, m, 5, N)
+    ##(Works, but it appears that the kron is backwards from what I would expect)
+#
+    #print("Testing hybrid (non-contiguous) PTV generation")
+    #def hybrid2(Px):
+    #    S1 = get_vin_mc1(np.array([Px[0], Px[2]]))
+    #    S2 = get_vin_mc1(np.array([Px[1], Px[3]]))
+    #    pre_swap = np.kron(S2, S1)
+    #    swap_inds = np.array([0, 2, 1, 3])
+    #    return PTV_swap_cols(pre_swap, swap_inds)
+    #assert uniform_ptv_test(hybrid2, m, 4, N)
+    ##(Works when the generated ptv is propery reordered)
 
 def test_mac_relu():
     Mf1 = get_func_mat(mac_relu_l1, 7, 5)
@@ -323,7 +321,7 @@ def test_rc():
 #[1.44627072e-01 1.38600944e-01 1.32574816e-01 1.26548688e-01 1.20522560e-01 1.14496432e-01 1.08470304e-01 1.02444176e-01 9.64180477e-02 9.03919198e-02 8.43657918e-02 7.83396638e-02 7.23135358e-02 6.62874078e-02 6.02612798e-02 5.42351519e-02 4.82090239e-02 4.21828959e-02 3.61567679e-02 3.01306399e-02 2.41045119e-02 1.80783840e-02 1.20522560e-02 6.02612798e-03 6.93498599e-13]
 
 def testing_for_paper():
-    pass
-    #test_ptv_gen()
+    #pass
+    test_ptv_gen()
     #test_rc()
     #test_mac_relu()

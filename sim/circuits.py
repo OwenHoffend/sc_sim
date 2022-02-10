@@ -107,6 +107,12 @@ def maj_2(s0, s1, x1, x2, x3, x4):
     m2 = maj_1(s1, x4, x3)
     return m1, m2
 
+def mux_2_joint(s0, x1, x2, x3, x4):
+    return mux_2(s0, s0, x1, x2, x3, x4)
+
+def maj_2_joint(s0, x1, x2, x3, x4):
+    return maj_2(s0, s0, x1, x2, x3, x4)
+
 def sorter_2(x2, x1):
     top = np.bitwise_and(x2, x1)
     bot = np.bitwise_or(x2, x1)

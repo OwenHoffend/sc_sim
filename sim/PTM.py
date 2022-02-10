@@ -115,6 +115,30 @@ def get_vin_mc1_paper(Pin):
         Vin[i] = max(0, min(r1) - max(r0))
     return np.round(Vin, 12)
 
+def get_vin_mcn1_paper(Pin):
+    n = Pin.size
+    Bn = B_mat(n)
+    Vin = np.zeros(2 ** n)
+    if n > 2 and np.sum(Pin) > 1:
+        return None
+    for i in range(2 ** n):
+        r1 = set()
+        r0 = set()
+        for j in range(n):
+            if Bn[i, j]:
+                r1.add(Pin[j])
+            else:
+                r0.add(Pin[j])
+        if i == 0:
+            Vin[i] = max(0, 1 - np.sum(Pin))
+        elif len(r1) == 1:
+            Vin[i] = sum(r1) - max(0, np.sum(Pin) - 1)
+        else:
+            Vin[i] = max(0, np.sum(Pin) - 1)
+    if not np.isclose(np.sum(Vin), 1.0):
+        print("hi")
+    return np.round(Vin, 12)
+
 def get_vin_mc1_cuda(Pin):
     b, n = Pin.shape
     Vin = torch.cuda.FloatTensor(b, 2 ** n).fill_(0)
