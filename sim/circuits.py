@@ -77,6 +77,14 @@ def and_3_to_2(x1, x2, x3):
     o2 = np.bitwise_and(x2, x3)
     return o1, o2
 
+def and_3_to_2_const(x2, x1, c0):
+    o1 = np.bitwise_and(c0, x1)
+    o2 = np.bitwise_and(c0, x2)
+    return o1, o2
+
+def mux_2_joint_const(x4, x3, x2, x1, c0):
+    return mux_2(c0, c0, x1, x2, x3, x4)
+
 def mux_1(s, x1, x2):
     t1 = np.bitwise_and(x1, np.bitwise_not(s))
     t2 = np.bitwise_and(x2, s)

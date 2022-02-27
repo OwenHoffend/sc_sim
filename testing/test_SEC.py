@@ -10,8 +10,23 @@ def test_get_SEC_class():
     print(mux_SEC == maj_SEC)
 
 def test_get_SECs():
-    get_SECs(cir.xor_4_to_2, 1, 3, 2, np.array([0.5, ]))
-    #get_SECs(cir.and_3_to_2, 2, 1, 2, np.array([0.3, 0.7]))
+    get_SECs(cir.mux_2_joint, 1, 4, 2, np.array([0.5, ]))
 
-def test_SEC():
-    test_get_SECs()
+def test_SEC_corr_score():
+    SEs = get_SECs(cir.mux_2_joint, 1, 4, 2, np.array([0.5, ]))
+    max_ = 0
+    min_ = np.inf
+    for SE in SEs:
+        score = SEC_corr_score(SE, 0, 1)
+        if score == 9:
+            print('hi')
+        if score > max_:
+            max_ = score
+            print("new max: ", max_)
+        elif score < min_:
+            min_ = score
+            print("new min: ", min_)
+
+def test_max_corr_2inputs_restricted():
+    max_corr_2inputs_restricted(cir.mux_2_joint_const, 1, 4)
+    #max_corr_2inputs_restricted(cir.and_3_to_2_const, 1, 2)
