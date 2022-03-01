@@ -11,6 +11,7 @@ from testing.img_proc_testing import *
 from testing.max_pooling_tests import *
 from testing.testing_for_paper import *
 from testing.test_SEC import *
+from testing.circuits_obj_tests import *
 
 from sim.circuits import *
 
@@ -30,7 +31,7 @@ def profile(func):
 
 def main():
     """THIS SHOULD BE THE MAIN ENTRY POINT FOR EVERYTHING!"""
-    self_learn_tests()
+    test_max_corr_2outputs_restricted()
     
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@ from multiprocessing.sharedctypes import Value
 import numpy as np
 import copy
 from sim.PTM import *
-import sim.circuits as cir
+from sim.circuits_obj import *
 
 def get_SEC_class(func, nc, nv, k, consts):
     #Expects the circuit function's inputs to be ordered with all constants first
@@ -60,13 +60,13 @@ def opt_K_max(K):
     K_sum = np.sum(K, axis=1)
     return np.stack([np.pad(np.ones(t, dtype=np.bool_), (0, tlen-t), 'constant') for t in K_sum])
 
-def max_corr_2inputs_restricted(func, nc, nv, k=2, o1_idx=0, o2_idx=1):
+def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
     #Directly compute a circuit design that maximizes the output correlation between two inputs
     #Restrict the constant inputs to be the value "0.5" only
-    Mf = get_func_mat(func, nc + nv, k) # 2**(nc+nv) x 2**k
-    A = Mf @ B_mat(k) #2**(nc+nv) x k
-    K1 = A[:, o1_idx].reshape(2**nc, 2**nv).T
-    K2 = A[:, o2_idx].reshape(2**nc, 2**nv).T
+    Mf = cir.ptm()
+    A = Mf @ B_mat(cir.k) #2**(nc+nv) x k
+    K1 = A[:, o1_idx].reshape(2**cir.nc, 2**cir.nv).T
+    K2 = A[:, o2_idx].reshape(2**cir.nc, 2**cir.nv).T
     print("# overlaps before: ", SEC_corr_score_K(K1, K2))
     K1_opt = opt_K_max(K1)
     K2_opt = opt_K_max(K2)
