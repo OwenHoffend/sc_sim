@@ -27,6 +27,10 @@ def test_SEC_corr_score():
             min_ = score
             print("new min: ", min_)
 
-def test_max_corr_2inputs_restricted():
-    max_corr_2inputs_restricted(cir.mux_2_joint_const, 1, 4)
-    #max_corr_2inputs_restricted(cir.and_3_to_2_const, 1, 2)
+def test_max_corr_2outputs_restricted():
+    consts = np.array([
+        [True, False, True],
+        [False, True , True]
+    ])
+    max_corr_2outputs_restricted(PARALLEL_CONST_MUL(consts))
+    #max_corr_2outputs_restricted(PARALLEL_MUX(2))

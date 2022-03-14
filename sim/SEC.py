@@ -67,7 +67,19 @@ def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
     A = Mf @ B_mat(cir.k) #2**(nc+nv) x k
     K1 = A[:, o1_idx].reshape(2**cir.nc, 2**cir.nv).T
     K2 = A[:, o2_idx].reshape(2**cir.nc, 2**cir.nv).T
+    K1_max = opt_K_max(K1)
+    K2_max = opt_K_max(K2)
+    K2_min = np.flip(K2_max, axis=1)
     print("# overlaps before: ", SEC_corr_score_K(K1, K2))
-    K1_opt = opt_K_max(K1)
-    K2_opt = opt_K_max(K2)
-    print("# overlaps after: ", SEC_corr_score_K(K1_opt, K2_opt))
+    print("min # overlaps after: ", SEC_corr_score_K(K1_max, K2_min))
+    print("max # overlaps after: ", SEC_corr_score_K(K1_max, K2_max))
+
+    A_max = np.zeros_like(A)
+    A_max[:, o1_idx] = K1_max.T.reshape(2**(cir.nc + cir.nv))
+    A_max[:, o2_idx] = K2_max.T.reshape(2**(cir.nc + cir.nv))
+    print(K1 * 1)
+    print(K2 * 1)
+    print(K1_max * 1)
+    print(K2_max * 1)
+    print(K1_max * 1)
+    print(K2_min * 1)

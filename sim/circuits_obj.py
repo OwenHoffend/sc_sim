@@ -87,16 +87,20 @@ class SeriesCircuit(Circuit):
 
 #CIRCUIT LIBRARY
 class AND(Circuit):
-    def __init__(self):
-        super().__init__(np.bitwise_and, 2, 1)
+    def __init__(self, nc=0):
+        super().__init__(np.bitwise_and, 2, 1, nc=nc)
 
 class OR(Circuit):
-    def __init__(self):
-        super().__init__(np.bitwise_or, 2, 1)
+    def __init__(self, nc=0):
+        super().__init__(np.bitwise_or, 2, 1, nc=nc)
+
+class XOR(Circuit):
+    def __init__(self, nc=0):
+        super().__init__(np.bitwise_xor, 2, 1, nc=nc)
 
 class NOT(Circuit): #Propagates constants
-    def __init__(self):
-        super().__init__(np.bitwise_not, 1, 1)
+    def __init__(self, nc=0):
+        super().__init__(np.bitwise_not, 1, 1, nc=nc)
 
 class BUS(Circuit):
     def __init__(self, n, k, mappings, nc=0):
@@ -109,8 +113,18 @@ class BUS(Circuit):
                     out.append(np.bitwise_not(args[-m]))
                 else:
                     out.append(args[m])
+            if len(out) == 1:
+                return out[0]
             return tuple(out)
         super().__init__(func, n, k, nc=nc)
+
+class I(BUS): #Special bus that just passes the input to the output
+    def __init__(self, width, nc=0):
+        super().__init__(width, width, [x for x in range(width)], nc=nc)
+
+class FANOUT(BUS):
+    def __init__(self, n, num_dup, nc=0):
+        super().__init__(n, n * num_dup, [i % n for i in range(n * num_dup)], nc=nc)
 
 class MUX(SeriesCircuit):
     def __init__(self):
@@ -137,3 +151,59 @@ class PARALLEL_MUX(SeriesCircuit):
             ParallelCircuit([MUX() for _ in range(iters)])
         ]
         super().__init__(layers)
+
+class MUX_TREE(SeriesCircuit):
+    def __init__(self, n):
+        #For now, this only accepts powers of 2
+        num_layers = np.log2(n)
+        #Check that n is a power of 2
+
+class CONST_VAL(SeriesCircuit):
+    #Circuit generates a constant from a number of 0.5 const inputs
+    def __init__(self, radix_bits):
+        #radix_bits is an array such as [0, 1, 0, 1] corresponding to binary radix 0.0101, etc.
+        precision = len(radix_bits)
+        assert radix_bits[-1] #Last entry needs to be True, no trailing zeros
+        #A couple special cases
+        if precision == 1:
+            super().__init__([I(1, nc=1)])
+            return
+        #Main cases
+        layers = []
+        for bit in radix_bits[:-1]:
+            if bit: #Add an OR gate
+                if precision == 2:
+                    layers.append(OR(nc=2))
+                else:
+                    layers.append(ParallelCircuit([OR(nc=2), I(precision-2, nc=precision-2)]))
+            else: #Add an AND gate
+                if precision == 2:
+                    layers.append(AND(nc=2))
+                else:
+                    layers.append(ParallelCircuit([AND(nc=2), I(precision-2, nc=precision-2)]))
+            precision -= 1
+        super().__init__(layers)
+
+class PARALLEL_CONST(SeriesCircuit):
+    def __init__(self, radix_bit_mat):
+        width, precision = radix_bit_mat.shape
+        layers = [
+            FANOUT(precision, width, nc=precision),
+            ParallelCircuit([CONST_VAL(row) for row in radix_bit_mat])
+        ]
+        super().__init__(layers)
+
+class PARALLEL_CONST_MUL(SeriesCircuit):
+    def __init__(self, radix_bit_mat):
+        width, _ = radix_bit_mat.shape
+        mappings = [x for x in range(0, 2*width, 2)] + [x for x in range(1, 2*width, 2)]
+        layers = [
+            ParallelCircuit([PARALLEL_CONST(radix_bit_mat), I(width)]),
+            BUS(2*width, 2*width, mappings),
+            ParallelCircuit([XOR(), XOR()])
+        ] 
+        super().__init__(layers)
+
+class MAC_CONSTS(SeriesCircuit):
+    def __init__(self, radix_bit_mat):
+        pass
