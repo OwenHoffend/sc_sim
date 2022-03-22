@@ -60,13 +60,17 @@ def opt_K_max(K):
     K_sum = np.sum(K, axis=1)
     return np.stack([np.pad(np.ones(t, dtype=np.bool_), (0, tlen-t), 'constant') for t in K_sum])
 
-def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
-    #Directly compute a circuit design that maximizes the output correlation between two inputs
-    #Restrict the constant inputs to be the value "0.5" only
+def get_K_2outputs(cir, o1_idx=0, o2_idx=1):
     Mf = cir.ptm()
     A = Mf @ B_mat(cir.k) #2**(nc+nv) x k
     K1 = A[:, o1_idx].reshape(2**cir.nc, 2**cir.nv).T
     K2 = A[:, o2_idx].reshape(2**cir.nc, 2**cir.nv).T
+    return K1, K2
+
+def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
+    #Directly compute a circuit design that maximizes the output correlation between two outputs
+    #Restrict the constant inputs to be the value "0.5" only
+    K1, K2 = get_K_2outputs(cir, o1_idx, o2_idx)
     K1_max = opt_K_max(K1)
     K2_max = opt_K_max(K2)
     K2_min = np.flip(K2_max, axis=1)
@@ -74,9 +78,9 @@ def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
     print("min # overlaps after: ", SEC_corr_score_K(K1_max, K2_min))
     print("max # overlaps after: ", SEC_corr_score_K(K1_max, K2_max))
 
-    A_max = np.zeros_like(A)
-    A_max[:, o1_idx] = K1_max.T.reshape(2**(cir.nc + cir.nv))
-    A_max[:, o2_idx] = K2_max.T.reshape(2**(cir.nc + cir.nv))
+    #A_max = np.zeros_like(A)
+    #A_max[:, o1_idx] = K1_max.T.reshape(2**(cir.nc + cir.nv))
+    #A_max[:, o2_idx] = K2_max.T.reshape(2**(cir.nc + cir.nv))
     print(K1 * 1)
     print(K2 * 1)
     print(K1_max * 1)

@@ -1,3 +1,4 @@
+from audioop import mul
 import numpy as np
 from functools import reduce
 from sim.PTM import get_func_mat
@@ -135,11 +136,26 @@ class MUX(SeriesCircuit):
         ]
         super().__init__(layers)
 
-class PARALLEL_MUX(SeriesCircuit):
-    def __init__(self, iters):
-        #bus s1 s2 x1 x2 x3 x4 --> x1 x2 s1 x3 x4 s2, etc
+class MAJ(SeriesCircuit):
+    def __init__(self):
+        layers = [
+            BUS(3, 6, [0, 1, 0, 2, 1, 2], nc=1),
+            ParallelCircuit([AND(), AND(), AND()]),
+            ParallelCircuit([OR(), I(1)]),
+            OR()
+        ]
+        super().__init__(layers)
+
+class PARALLEL_ADD(SeriesCircuit):
+    def __init__(self, iters, maj=False):
+        #input scheme: x, x, x, x, s
+        #bus x0, x1, s, x2, x3, s, etc
         bus_mapping = []
         idx = 0
+        if maj:
+            adds = [MAJ() for _ in range(iters)]
+        else:
+            adds = [MUX() for _ in range(iters)]
         for i in range(3*iters):
             if i % 3 != 2:
                 bus_mapping.append(idx)
@@ -148,29 +164,49 @@ class PARALLEL_MUX(SeriesCircuit):
                 bus_mapping.append(2*iters)
         layers = [
             BUS(2 * iters + 1, 3 * iters, bus_mapping, nc=1),
-            ParallelCircuit([MUX() for _ in range(iters)])
+            ParallelCircuit(adds)
         ]
         super().__init__(layers)
 
-class MUX_TREE(SeriesCircuit):
-    def __init__(self, n):
-        #For now, this only accepts powers of 2
-        num_layers = np.log2(n)
-        #Check that n is a power of 2
-
 class CONST_VAL(SeriesCircuit):
     #Circuit generates a constant from a number of 0.5 const inputs
-    def __init__(self, radix_bits):
-        #radix_bits is an array such as [0, 1, 0, 1] corresponding to binary radix 0.0101, etc.
-        precision = len(radix_bits)
-        assert radix_bits[-1] #Last entry needs to be True, no trailing zeros
-        #A couple special cases
+    def __init__(self, val, precision, bipolar=True):
+        assert val != 0
+        assert val != 1
+
+        #One bit of precision is trivial
         if precision == 1:
             super().__init__([I(1, nc=1)])
             return
-        #Main cases
+            
+        #Correct bipolar encoding
+        #if bipolar:
+        #    val = (val + 1) / 2
+
+        #Convert val into radix bits
+        #radix_bits is an array such as [0, 1, 0, 1] corresponding to binary radix 0.0101, etc.
+        radix_bits = np.zeros(precision, dtype=np.bool_)
+        cmp = 0.5
+        for i in range(precision):
+            if val >= cmp:
+                radix_bits[i] = 1
+                val -= cmp
+            else:
+                radix_bits[i] = 0
+            cmp /= 2
+        while radix_bits[-1] == 0:
+            radix_bits = radix_bits[:-1]
+        precision = radix_bits.size
+        self.actual_precision = precision
+
+        #Construct the circuit
         layers = []
-        for bit in radix_bits[:-1]:
+        if precision == 1:
+            layers.append(I(1, nc=1))
+            super().__init__(layers)
+            return
+        radix_bits = radix_bits[:-1]
+        for bit in radix_bits[::-1]:
             if bit: #Add an OR gate
                 if precision == 2:
                     layers.append(OR(nc=2))
@@ -185,25 +221,57 @@ class CONST_VAL(SeriesCircuit):
         super().__init__(layers)
 
 class PARALLEL_CONST(SeriesCircuit):
-    def __init__(self, radix_bit_mat):
-        width, precision = radix_bit_mat.shape
+    def __init__(self, consts, precision, bipolar=True):
+        const_vals = [CONST_VAL(const, precision, bipolar=bipolar) for const in reversed(consts)]
+        precisions = [x.actual_precision for x in reversed(const_vals)]
+        self.actual_precision = max(precisions)
+        sp = sum(precisions)
+        mappings = []
+        for p in precisions:
+            mappings += list(range(p))
         layers = [
-            FANOUT(precision, width, nc=precision),
-            ParallelCircuit([CONST_VAL(row) for row in radix_bit_mat])
+            BUS(self.actual_precision, sp, mappings, nc=self.actual_precision),
+            ParallelCircuit(const_vals)
         ]
         super().__init__(layers)
 
 class PARALLEL_CONST_MUL(SeriesCircuit):
-    def __init__(self, radix_bit_mat):
-        width, _ = radix_bit_mat.shape
-        mappings = [x for x in range(0, 2*width, 2)] + [x for x in range(1, 2*width, 2)]
+    def __init__(self, consts, precision, bipolar=True):
+        width = len(consts)
+        mappings = []
+        for i in range(width):
+            mappings.append(i)
+            mappings.append(i+width)
+        if bipolar:
+            mul_layer = ParallelCircuit([XOR() for _ in range(width)])
+        else:
+            mul_layer = ParallelCircuit([AND() for _ in range(width)])
+        parallel_const = PARALLEL_CONST(consts, precision, bipolar=bipolar)
         layers = [
-            ParallelCircuit([PARALLEL_CONST(radix_bit_mat), I(width)]),
+            ParallelCircuit([parallel_const, I(width)]),
             BUS(2*width, 2*width, mappings),
-            ParallelCircuit([XOR(), XOR()])
-        ] 
+            mul_layer
+        ]
+        self.actual_precision = parallel_const.actual_precision
         super().__init__(layers)
 
-class MAC_CONSTS(SeriesCircuit):
-    def __init__(self, radix_bit_mat):
-        pass
+class MAC(SeriesCircuit):
+    def __init__(self, consts, precision, bipolar=True):
+        const_mul = PARALLEL_CONST_MUL(consts, precision, bipolar=bipolar)
+        layers = [
+            ParallelCircuit([const_mul, I(1, nc=1)]),
+            MUX()
+        ]
+        self.actual_precision = const_mul.actual_precision
+        super().__init__(layers)
+
+class PARALLEL_MAC_2(SeriesCircuit):
+    def __init__(self, consts, precision, bipolar=True, maj=False):
+        assert len(consts) == 4
+        const_mul = PARALLEL_CONST_MUL(consts, precision, bipolar=bipolar)
+        layers = [
+            ParallelCircuit([I(1, nc=1), const_mul]),
+            PARALLEL_ADD(2, maj=maj)
+        ]
+        self.actual_precision = const_mul.actual_precision
+        super().__init__(layers)
