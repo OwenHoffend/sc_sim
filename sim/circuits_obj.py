@@ -11,6 +11,7 @@ class Circuit:
         self.k = k
         self.nc = nc
         self.nv = n - nc
+        self.ptm_cache = None
 
     def eval(self, *args):
         assert len(args) == self.n
@@ -22,7 +23,9 @@ class Circuit:
         return results
 
     def ptm(self):
-        return get_func_mat(self.func, self.n, self.k)
+        if self.ptm_cache is None:
+            self.ptm_cache = get_func_mat(self.func, self.n, self.k)
+        return self.ptm_cache
 
 class ParallelCircuit(Circuit):
     def _parallel_func(func1, func2, n1, n2):
@@ -243,7 +246,7 @@ class PARALLEL_CONST_MUL(SeriesCircuit):
             mappings.append(i)
             mappings.append(i+width)
         if bipolar:
-            mul_layer = ParallelCircuit([XOR() for _ in range(width)])
+            mul_layer = ParallelCircuit([SeriesCircuit([XOR(), NOT()]) for _ in range(width)])
         else:
             mul_layer = ParallelCircuit([AND() for _ in range(width)])
         parallel_const = PARALLEL_CONST(consts, precision, bipolar=bipolar)

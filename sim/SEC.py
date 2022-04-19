@@ -1,3 +1,4 @@
+from audioop import avg
 from multiprocessing.sharedctypes import Value
 import numpy as np
 import copy
@@ -52,13 +53,59 @@ def SEC_corr_score(a, o1_idx, o2_idx):
         s += np.sum(a_[:, o1_idx] & a_[:, o2_idx])
     return s
 
-def SEC_corr_score_K(K1, K2):
+def SEC_num_ovs(K1, K2):
+    #Compute the correlation score between K1 and K2 by counting the number of overlaps
     return np.sum(np.bitwise_and(K1, K2))
+
+def SEC_uniform_SCC_score(K1, K2, ptv_func, m=1000):
+    ptm = Ks_to_Mf([K1, K2])
+    n, _ = np.log2(ptm.shape)
+    avg_Cmat = np.zeros((2, 2))
+    for _ in range(m):
+        Px = np.random.uniform(size=int(n))
+        vin = ptv_func(Px)
+        vout = ptm.T @ vin
+        avg_Cmat += get_corr_mat_paper(vout)
+    avg_Cmat /= m
+    #print(avg_Cmat)
+    return avg_Cmat 
+
+def SEC_uniform_err(ptm, ptv_func, correct_func, m=1000):
+    n, _ = np.log2(ptm.shape)
+    avg_err = 0
+    for _ in range(m):
+        Px = np.random.uniform(size=int(n))
+        vin = ptv_func(Px)
+        vout = ptm.T @ vin
+        avg_err += np.abs(vout[0] - correct_func(Px))
+    avg_err /= m
+    return avg_err
 
 def opt_K_max(K):
     _, tlen = K.shape
     K_sum = np.sum(K, axis=1)
     return np.stack([np.pad(np.ones(t, dtype=np.bool_), (0, tlen-t), 'constant') for t in K_sum])
+
+def opt_K_min(K):
+    K_max = opt_K_max(K)
+    return np.flip(K_max, axis=1)
+
+def opt_K_zero(K1, K2):
+    K1_max = opt_K_max(K1)
+    K2_max = opt_K_max(K2)
+
+def Ks_to_Mf(Ks):
+    nc, nv = np.log2(Ks[0].shape)
+    n = int(nv + nc)
+    k = len(Ks) #Ks is a list of K matrices
+    A = np.zeros((2**n, k), dtype=np.bool_)
+    for i, K in enumerate(Ks):
+        A[:, i] = K.T.reshape(2**n)
+    Mf = np.zeros((2**n, 2**k), dtype=np.bool_)
+    for i in range(2**n):
+        x = int_array(A[i, :].reshape(1, k))
+        Mf[i, x] = True
+    return Mf
 
 def get_K_2outputs(cir, o1_idx=0, o2_idx=1):
     Mf = cir.ptm()
@@ -73,10 +120,10 @@ def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
     K1, K2 = get_K_2outputs(cir, o1_idx, o2_idx)
     K1_max = opt_K_max(K1)
     K2_max = opt_K_max(K2)
-    K2_min = np.flip(K2_max, axis=1)
-    print("# overlaps before: ", SEC_corr_score_K(K1, K2))
-    print("min # overlaps after: ", SEC_corr_score_K(K1_max, K2_min))
-    print("max # overlaps after: ", SEC_corr_score_K(K1_max, K2_max))
+    K2_min = opt_K_min(K2)
+    print("# overlaps before: ", SEC_num_ovs(K1, K2))
+    print("min # overlaps after: ", SEC_num_ovs(K1_max, K2_min))
+    print("max # overlaps after: ", SEC_num_ovs(K1_max, K2_max))
 
     #A_max = np.zeros_like(A)
     #A_max[:, o1_idx] = K1_max.T.reshape(2**(cir.nc + cir.nv))
