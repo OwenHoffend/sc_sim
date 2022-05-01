@@ -1,7 +1,7 @@
 #Simulations for the SCC satisfiability problem
 
 import numpy as np
-import bitstreams as bs
+import sim.bitstreams as bs
 import itertools
 import random
 from scipy import special

@@ -135,3 +135,9 @@ dmypy.json
 .prof_stats
 profiling_stats.txt
 symbolic_manip_old.py
+
+data/*
+img/*
+*.npy
+*.pth
+test_main.py
