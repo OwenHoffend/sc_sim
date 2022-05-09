@@ -6,6 +6,9 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 
+from sim.circuits_obj import *
+from sim.SEC import *
+
 def float32_to_radix_arr(f32_tensor, nbits):
     negative_mask = torch.sign(f32_tensor)
     f32_tensor_abs = torch.abs(f32_tensor)
@@ -56,11 +59,41 @@ class CNN(nn.Module):
 
     def sc_quantize(self, nbits):
         state_dict = self.state_dict()
+        self.sc_quant_weights = {}
+        self.nbits = nbits
         for name, param in state_dict.items():
             bit_arr, transformed_param = float32_to_radix_arr(param, nbits)
+            self.sc_quant_weights[name] = transformed_param
             param.copy_(transformed_param)
 
-def main(cifar=True, train=True, test=True, quantize=False, sc_quantize=False, nbits=4):
+    def sc_circuit(self):
+
+        #Normal conv/fc+ReLU layers
+        sc_layers = {}
+        for name, param in self.sc_quant_weights.items():
+            if 'conv' in name:
+                if 'weight' in name: #weights
+                    sc_layers[name] = []
+                    for channel in range(param.shape[1]):
+                        weights = torch.flatten(param[channel, :, :, :], start_dim=1, end_dim=2)
+                        sc_layers[name].append([PARALLEL_CONST_MUL(weights, self.nbits, bipolar=False, reuse=True), ])
+                else: #biases
+                    pass
+                    #current_channels[channel]
+                    #Most of the code will go here
+
+                    #Add ReLU
+                    
+            elif 'fc' in name:
+                pass
+            else:
+                raise TypeError("Unknown layer type")
+
+        #Add max pooling to the correct locations
+
+        return SeriesCircuit(sc_layers)
+
+def CNN_classifier_main(cifar=True, train=True, test=True, quantize=False, sc_quantize=False, nbits=4):
     if cifar:
         PATH = './CIFAR_net.pth'
         norm = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))
@@ -115,6 +148,7 @@ def main(cifar=True, train=True, test=True, quantize=False, sc_quantize=False, n
             print("quantized")
         elif sc_quantize:
             cnn.sc_quantize(nbits)
+            test_circ = cnn.sc_circuit()
 
         correct = 0
         total = 0
@@ -130,4 +164,4 @@ def main(cifar=True, train=True, test=True, quantize=False, sc_quantize=False, n
     
 if __name__ == "__main__":
     #for i in range(1, 9):
-    main(cifar=False, train=False, sc_quantize=True, nbits=4)
+    CNN_classifier_main(cifar=False, train=False, sc_quantize=True, nbits=4)

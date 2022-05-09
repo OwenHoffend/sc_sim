@@ -239,23 +239,37 @@ class PARALLEL_CONST(SeriesCircuit):
         super().__init__(layers)
 
 class PARALLEL_CONST_MUL(SeriesCircuit):
-    def __init__(self, consts, precision, bipolar=True):
+    """Parallel multiply an arbitrary number of variable inputs with an 
+    equal number of arbitrary constant inputs. Each constant is generated using an AND/OR chain
+    reuse: When True, the class will only generate one SNG for each unique constant
+             an appropriate BUS will be added to connect the SNG to duplicate instances
+    """
+    def __init__(self, consts, precision, bipolar=True, reuse=False):
         width = len(consts)
-        mappings = []
+        self.consts = consts
+        mul_mappings = []
         for i in range(width):
-            mappings.append(i)
-            mappings.append(i+width)
+            mul_mappings.append(i)
+            mul_mappings.append(i+width)
         if bipolar:
             mul_layer = ParallelCircuit([SeriesCircuit([XOR(), NOT()]) for _ in range(width)])
         else:
             mul_layer = ParallelCircuit([AND() for _ in range(width)])
-        parallel_const = PARALLEL_CONST(consts, precision, bipolar=bipolar)
+        if reuse:
+            unique_consts = np.unique(consts)
+            sngs = PARALLEL_CONST(unique_consts, precision, bipolar=bipolar)
+            m = {x : i for i, x in enumerate(unique_consts)}
+            const_mappings = [m[x] for x in consts]
+            parallel_const = SeriesCircuit([sngs, BUS(unique_consts.size, width, const_mappings)])
+            self.actual_precision = sngs.actual_precision
+        else:
+            parallel_const = PARALLEL_CONST(consts, precision, bipolar=bipolar)
+            self.actual_precision = parallel_const.actual_precision
         layers = [
             ParallelCircuit([parallel_const, I(width)]),
-            BUS(2*width, 2*width, mappings),
+            BUS(2*width, 2*width, mul_mappings),
             mul_layer
         ]
-        self.actual_precision = parallel_const.actual_precision
         super().__init__(layers)
 
 class MAC(SeriesCircuit):
@@ -268,7 +282,7 @@ class MAC(SeriesCircuit):
         self.actual_precision = const_mul.actual_precision
         super().__init__(layers)
 
-class PARALLEL_MAC_2(SeriesCircuit):
+class PARALLEL_MAC_N(SeriesCircuit):
     def __init__(self, consts, precision, bipolar=True, maj=False):
         assert len(consts) == 4
         const_mul = PARALLEL_CONST_MUL(consts, precision, bipolar=bipolar)
