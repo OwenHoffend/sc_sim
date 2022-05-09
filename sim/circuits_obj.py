@@ -6,14 +6,14 @@ from sim.PTM import get_func_mat
 #Object-oriented version of circuits.py
 class Circuit:
     def __init__(self, func, n, k, nc=0):
+        self._ptm_cache = None
         self.func = func
         self.n = n
         self.k = k
         self.nc = nc
         self.nv = n - nc
-        self.ptm_cache = None
 
-    def eval(self, *args):
+    def eval(self, *args): #<-- Really shouldn't use, just use the PTM instead
         assert len(args) == self.n
         results = self.func(*args)
         if isinstance(results, tuple):
@@ -23,9 +23,12 @@ class Circuit:
         return results
 
     def ptm(self):
-        if self.ptm_cache is None:
-            self.ptm_cache = get_func_mat(self.func, self.n, self.k)
-        return self.ptm_cache
+        if self._ptm_cache is None:
+            self._ptm_cache = get_func_mat(self.func, self.n, self.k)
+        return self._ptm_cache
+
+    def update_ptm(self, new_ptm): #Allows for dyanmic optimizations
+        self._ptm_cache = new_ptm
 
 class ParallelCircuit(Circuit):
     def _parallel_func(func1, func2, n1, n2):
@@ -63,8 +66,10 @@ class ParallelCircuit(Circuit):
         super().__init__(func, n, k, nc=nc)
 
     def ptm(self): #override
-        sub_ptms = [c.ptm() for c in self.subcircuits]
-        return reduce(lambda a, b: np.kron(a, b), sub_ptms)
+        if self._ptm_cache is None:
+            sub_ptms = [c.ptm() for c in self.subcircuits]
+            self._ptm_cache = reduce(lambda a, b: np.kron(a, b), sub_ptms)
+        return self._ptm_cache
 
 class SeriesCircuit(Circuit):
     def _series_func(func1, func2):
@@ -86,10 +91,20 @@ class SeriesCircuit(Circuit):
         super().__init__(func, circuits[0].n, circuits[-1].k, nc=circuits[0].nc)
 
     def ptm(self): #override
-        sub_ptms = [c.ptm() for c in self.subcircuits]
-        return reduce(lambda a, b: a @ b, sub_ptms)
+        if self._ptm_cache is None:
+            sub_ptms = [c.ptm() for c in self.subcircuits]
+            self._ptm_cache = reduce(lambda a, b: a @ b, sub_ptms)
+        return self._ptm_cache
 
 #CIRCUIT LIBRARY
+class CONST_1(Circuit):
+    def __init__(self, n=1): #n doesn't affect the output, so allow this module to absorb any number of inputs
+        super().__init__(lambda *x: np.array([True]), n, 1, nc=0)
+
+class CONST_0(Circuit):
+    def __init__(self, n=1): #n doesn't affect the output, so allow this module to absorb any number of inputs
+        super().__init__(lambda *x: np.array([False]), n, 1, nc=0)
+
 class AND(Circuit):
     def __init__(self, nc=0):
         super().__init__(np.bitwise_and, 2, 1, nc=nc)
@@ -107,6 +122,7 @@ class NOT(Circuit): #Propagates constants
         super().__init__(np.bitwise_not, 1, 1, nc=nc)
 
 class BUS(Circuit):
+    """Takes a list of length k called "mappings", which specifies the source input index for each output of the bus"""
     def __init__(self, n, k, mappings, nc=0):
         def func(*args):
             assert len(args) == n
@@ -174,8 +190,13 @@ class PARALLEL_ADD(SeriesCircuit):
 class CONST_VAL(SeriesCircuit):
     #Circuit generates a constant from a number of 0.5 const inputs
     def __init__(self, val, precision, bipolar=True):
-        assert val != 0
-        assert val != 1
+        self.actual_precision = precision
+        if val == 1.0:
+            super().__init__([CONST_1(n=precision)])
+            return
+        if val == 0.0:
+            super().__init__([CONST_0(n=precision)])
+            return
 
         #One bit of precision is trivial
         if precision == 1:
@@ -224,7 +245,25 @@ class CONST_VAL(SeriesCircuit):
         super().__init__(layers)
 
 class PARALLEL_CONST(SeriesCircuit):
-    def __init__(self, consts, precision, bipolar=True):
+    """Generate a set of parallel constant generators
+        reuse: When True, the class will only generate one SNG for each unique constant
+             an appropriate BUS will be added to connect the SNG to duplicate instances
+
+        Generates CORRELATED bitstreams. For un-correlated, simply use ParallelCircuit([CONST_VAL(), CONST_VAL(), ...])
+    """
+    def __init__(self, consts, precision, bipolar=True, reuse=False):
+        if reuse:
+            unique_consts = np.unique(consts)
+            sngs = self._parallel_consts(unique_consts, precision, bipolar=bipolar)
+            m = {x : i for i, x in enumerate(unique_consts)}
+            const_mappings = [m[x] for x in consts]
+            layers = sngs + [BUS(unique_consts.size, len(consts), const_mappings), ]
+        else:
+            layers = self._parallel_consts(consts, precision, bipolar=bipolar)
+        super().__init__(layers)
+
+    def _parallel_consts(self, consts, precision, bipolar=True):
+        """Old init function, from before the ability to reuse SNGs was added"""
         const_vals = [CONST_VAL(const, precision, bipolar=bipolar) for const in reversed(consts)]
         precisions = [x.actual_precision for x in reversed(const_vals)]
         self.actual_precision = max(precisions)
@@ -236,59 +275,72 @@ class PARALLEL_CONST(SeriesCircuit):
             BUS(self.actual_precision, sp, mappings, nc=self.actual_precision),
             ParallelCircuit(const_vals)
         ]
-        super().__init__(layers)
+        return layers
 
-class PARALLEL_CONST_MUL(SeriesCircuit):
-    """Parallel multiply an arbitrary number of variable inputs with an 
-    equal number of arbitrary constant inputs. Each constant is generated using an AND/OR chain
-    reuse: When True, the class will only generate one SNG for each unique constant
-             an appropriate BUS will be added to connect the SNG to duplicate instances
+class MAC_RELU(SeriesCircuit):
+    """Naiive MAC tree, with all multipliers in the first layer
+    The best way to optimize this for correlation is probably to use the full PTM with ignored inputs
+    TODO: Is this possible? Can we do SEC optimization while ignoring certain inputs?
     """
-    def __init__(self, consts, precision, bipolar=True, reuse=False):
-        width = len(consts)
-        self.consts = consts
+
+    def __init__(self, consts_pos, consts_neg, precision, bipolar=False, reuse=False):
+        wp = len(consts_pos)
+        wn = len(consts_neg)
+        p_depth = np.ceil(np.log2(wp)).astype(np.int)
+        n_depth = np.ceil(np.log2(wn)).astype(np.int)
+        depth = max(p_depth, n_depth)
+        width = 2 ** (depth + 1)
+        padding = width - (wp + wn)
+
+        #input layout:
+        # x sel consts
+        #precision x sng consts
+        #width x X_inputs
+
+        #SNGs
+        sngs = PARALLEL_CONST(consts_pos + consts_neg + padding * [0.0,], precision, bipolar=bipolar, reuse=reuse)
+        
+        #Multiplication layers
         mul_mappings = []
         for i in range(width):
             mul_mappings.append(i)
             mul_mappings.append(i+width)
         if bipolar:
-            mul_layer = ParallelCircuit([SeriesCircuit([XOR(), NOT()]) for _ in range(width)])
+            muls = ParallelCircuit([SeriesCircuit([XOR(), NOT()]) for _ in range(width)])
         else:
-            mul_layer = ParallelCircuit([AND() for _ in range(width)])
-        if reuse:
-            unique_consts = np.unique(consts)
-            sngs = PARALLEL_CONST(unique_consts, precision, bipolar=bipolar)
-            m = {x : i for i, x in enumerate(unique_consts)}
-            const_mappings = [m[x] for x in consts]
-            parallel_const = SeriesCircuit([sngs, BUS(unique_consts.size, width, const_mappings)])
-            self.actual_precision = sngs.actual_precision
-        else:
-            parallel_const = PARALLEL_CONST(consts, precision, bipolar=bipolar)
-            self.actual_precision = parallel_const.actual_precision
-        layers = [
-            ParallelCircuit([parallel_const, I(width)]),
-            BUS(2*width, 2*width, mul_mappings),
-            mul_layer
-        ]
-        super().__init__(layers)
+            muls = ParallelCircuit([AND() for _ in range(width)])
 
-class MAC(SeriesCircuit):
-    def __init__(self, consts, precision, bipolar=True):
-        const_mul = PARALLEL_CONST_MUL(consts, precision, bipolar=bipolar)
-        layers = [
-            ParallelCircuit([const_mul, I(1, nc=1)]),
-            MUX()
+        mul_layers = [
+            ParallelCircuit([sngs, I(width), I(depth, nc=depth)]),
+            ParallelCircuit([BUS(2*width, 2*width, mul_mappings), I(depth, nc=depth)]),
+            ParallelCircuit([muls, I(depth, nc=depth)])
         ]
-        self.actual_precision = const_mul.actual_precision
-        super().__init__(layers)
 
-class PARALLEL_MAC_N(SeriesCircuit):
-    def __init__(self, consts, precision, bipolar=True, maj=False):
-        assert len(consts) == 4
-        const_mul = PARALLEL_CONST_MUL(consts, precision, bipolar=bipolar)
-        layers = [
-            ParallelCircuit([I(1, nc=1), const_mul]),
-            PARALLEL_ADD(2, maj=maj)
-        ]
-        self.actual_precision = const_mul.actual_precision
+        #Addition tree layers
+        #imbalanced tree implementation (WIP)
+        def add_tree_imbalanced(w):
+            tree_depth = np.ceil(np.log2(w)).astype(np.int)
+            layers = []
+            current_w = w
+            for _ in range(tree_depth):
+                mcount = 0
+                pars = []
+                for w_i in range(current_w):
+                    if w_i % 2 == 1:
+                        pars.append(MUX())
+                        mcount += 1
+                if current_w % 2 == 1:
+                    pars.append(I(1))
+                    current_w = int((current_w - 1)/2) + 1
+                else:
+                    current_w = int(current_w/2)
+                layers.append(ParallelCircuit(pars))
+            return SeriesCircuit(layers)
+
+        #balanced tree implementation (requires extra inputs that are unconnected)
+        #def add_tree(d):
+        #    pass
+        #add_layers = ParallelCircuit([add_tree(depth), add_tree(depth)])
+
+        layers = mul_layers #+ [add_layers,]
         super().__init__(layers)

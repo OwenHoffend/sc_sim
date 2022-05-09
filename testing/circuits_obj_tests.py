@@ -35,7 +35,7 @@ def test_CONST_VAL(): #Needs updating for actual_precision
     c1 = CONST_VAL(0.8125, precision, bipolar=False)
     mf1 = c1.ptm()
     print(mf1.T @ ptv)
-    c2 = CONST_VAL(0.3125, precision, bipolar=False)
+    c2 = CONST_VAL(0.4875, precision, bipolar=False)
     mf2 = c2.ptm()
     print(mf2.T @ ptv)
     c3 = CONST_VAL(0.5, precision, bipolar=False)
@@ -49,13 +49,6 @@ def test_PARALLEL_CONST():
     ptv = np.array([1.0/(2**actual_precision) for _ in range(2 ** actual_precision)])
     print(B_mat(4).T @ cir.ptm().T @ ptv)
 
-def test_MAC():
-    px = np.array([0.2, 0.4, 0.5, 0.5, 0.5]) #Consts are ALWAYS on the right side
-    ptv = get_vin_mc0(px)
-    mac = MAC([0.75, 0.75], 2, bipolar=False)
-    Mf = mac.ptm()
-    print(Mf.T @ ptv)
-
 def test_PARALLEL_ADD():
     mux2 = PARALLEL_ADD(2, maj=True)
     px = np.array([0.1, 0.2, 0.3, 0.4, 0.5]) #0.15, 0.35
@@ -63,24 +56,7 @@ def test_PARALLEL_ADD():
     Mf = mux2.ptm()
     print(B_mat(2).T @ Mf.T @ ptv) #Works
 
-def test_PARALLEL_CONST_MUL():
-    mac2 = PARALLEL_CONST_MUL([0.25, 0.25, 0.75, 0.75], 2, bipolar=False)
-    px = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.5])
-    ptv = get_vin_mc0(px)
-    Mf = mac2.ptm()
-    print(B_mat(4).T @ Mf.T @ ptv)
-
-def test_PARALLEL_CONST_MUL_reuse():
-    """Test a set of parallel multiplications with constants, where the SNGs for the constants are shared where possible"""
-    mac2 = PARALLEL_CONST_MUL([0.25, 0.25, 0.75, 0.75, 0.3125, 0.3125], 4, bipolar=False, reuse=True)
-    px = np.array([0.1, 0.2, 0.3, 0.4, 0.6, 0.6, 0.5, 0.5, 0.5, 0.5])
-    ptv = get_vin_mc0(px)
-    Mf = mac2.ptm()
-    print(B_mat(6).T @ Mf.T @ ptv)
-
-def test_PARALLEL_MAC_2():
-    mac2 = PARALLEL_MAC_2([0.25, 0.25, 0.75, 0.75], 2, bipolar=False)
-    px = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.5, 0.5])
-    ptv = get_vin_mc0(px)
-    Mf = mac2.ptm()
-    print(B_mat(2).T @ Mf.T @ ptv)
+def test_MAC_RELU():
+    mac_relu = MAC_RELU([0.125, 0.375], [0.25, 0.5], 3)
+    ptm = mac_relu.ptm()
+    print('hi')
