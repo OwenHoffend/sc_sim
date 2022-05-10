@@ -58,5 +58,5 @@ def test_PARALLEL_ADD():
 
 def test_MAC_RELU():
     mac_relu = MAC_RELU([0.125, 0.375], [0.25, 0.5], 3)
-    ptm = mac_relu.ptm()
+    #ptm = mac_relu.ptm()
     print('hi')

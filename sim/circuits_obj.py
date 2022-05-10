@@ -278,9 +278,11 @@ class PARALLEL_CONST(SeriesCircuit):
         return layers
 
 class MAC_RELU(SeriesCircuit):
-    """Naiive MAC tree, with all multipliers in the first layer
-    The best way to optimize this for correlation is probably to use the full PTM with ignored inputs
-    TODO: Is this possible? Can we do SEC optimization while ignoring certain inputs?
+    """Positive/negative MAC + RELU
+        This circuit uses balanced addition trees for the positive and negative components, so all SELs can be 0.5
+        If the number of constants is not a power of 2, the extras will be ANDed with the SEL at the correct locations
+        in order to ensure proper scaling. The number of select inputs necessary is the height of the larger of the pos/neg
+        addition trees.
     """
 
     def __init__(self, consts_pos, consts_neg, precision, bipolar=False, reuse=False):
@@ -289,16 +291,15 @@ class MAC_RELU(SeriesCircuit):
         p_depth = np.ceil(np.log2(wp)).astype(np.int)
         n_depth = np.ceil(np.log2(wn)).astype(np.int)
         depth = max(p_depth, n_depth)
-        width = 2 ** (depth + 1)
-        padding = width - (wp + wn)
+        width = wp + wn
 
-        #input layout:
-        # x sel consts
+        #Input signal layout:
+        #depth x sel consts
         #precision x sng consts
         #width x X_inputs
 
         #SNGs
-        sngs = PARALLEL_CONST(consts_pos + consts_neg + padding * [0.0,], precision, bipolar=bipolar, reuse=reuse)
+        sngs = PARALLEL_CONST(consts_pos + consts_neg, precision, bipolar=bipolar, reuse=reuse)
         
         #Multiplication layers
         mul_mappings = []
@@ -311,36 +312,56 @@ class MAC_RELU(SeriesCircuit):
             muls = ParallelCircuit([AND() for _ in range(width)])
 
         mul_layers = [
-            ParallelCircuit([sngs, I(width), I(depth, nc=depth)]),
-            ParallelCircuit([BUS(2*width, 2*width, mul_mappings), I(depth, nc=depth)]),
-            ParallelCircuit([muls, I(depth, nc=depth)])
+            ParallelCircuit([I(depth, nc=depth), sngs, I(width)]),
+            ParallelCircuit([I(depth, nc=depth), BUS(2*width, 2*width, mul_mappings)]),
+            ParallelCircuit([I(depth, nc=depth), muls])
         ]
 
+        #Signal layout after mul layer:
+        #depth x sel consts
+        #width x mul results
+
         #Addition tree layers
-        #imbalanced tree implementation (WIP)
-        def add_tree_imbalanced(w):
-            tree_depth = np.ceil(np.log2(w)).astype(np.int)
+        def add_tree_balanced(full_depth, w):
             layers = []
             current_w = w
-            for _ in range(tree_depth):
-                mcount = 0
-                pars = []
-                for w_i in range(current_w):
-                    if w_i % 2 == 1:
-                        pars.append(MUX())
-                        mcount += 1
-                if current_w % 2 == 1:
-                    pars.append(I(1))
-                    current_w = int((current_w - 1)/2) + 1
+            for d in range(full_depth):
+                adds = []
+                remaining_sels = full_depth - d
+                passed_sels = remaining_sels - 1 #Number of sels passed onto the next layer
+                if passed_sels > 0:
+                    bus_mappings = [x for x in range(passed_sels)]
                 else:
-                    current_w = int(current_w/2)
-                layers.append(ParallelCircuit(pars))
+                    bus_mappings = []
+                for w_i in range(current_w):
+                    bus_mappings.append(remaining_sels + w_i) #data input
+                    if w_i % 2 == 1:
+                        adds.append(MUX())
+                        bus_mappings.append(passed_sels) #select input
+                if current_w % 2 == 1:
+                    adds.append(AND())
+                    next_w = int((current_w - 1)/2) + 1
+                else:
+                    next_w = int(current_w/2)
+                if passed_sels > 0:
+                    adds = [I(full_depth - d - 1),] + adds
+                layers.append(BUS(current_w + remaining_sels, len(bus_mappings), bus_mappings))
+                layers.append(ParallelCircuit(adds))
+                current_w = next_w
             return SeriesCircuit(layers)
 
-        #balanced tree implementation (requires extra inputs that are unconnected)
-        #def add_tree(d):
-        #    pass
-        #add_layers = ParallelCircuit([add_tree(depth), add_tree(depth)])
+        sel_map = [x for x in range(depth)]
+        add_sel_mappings = sel_map + [depth + x for x in range(wp)] + sel_map + [depth + wp + x for x in range(wn)]
+        add_layers = [
+            BUS(depth+width, 2*depth + width, add_sel_mappings),
+            ParallelCircuit([add_tree_balanced(depth, wp), add_tree_balanced(depth, wn)])
+        ]
 
-        layers = mul_layers #+ [add_layers,]
+        #ReLU layer
+        relu_layers = [
+            ParallelCircuit([I(1), NOT()]),
+            AND()
+        ]
+
+        layers = mul_layers + add_layers + relu_layers
         super().__init__(layers)

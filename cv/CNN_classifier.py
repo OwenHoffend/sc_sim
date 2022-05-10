@@ -76,7 +76,7 @@ class CNN(nn.Module):
                     sc_layers[name] = []
                     for channel in range(param.shape[1]):
                         weights = torch.flatten(param[channel, :, :, :], start_dim=1, end_dim=2)
-                        sc_layers[name].append([PARALLEL_CONST_MUL(weights, self.nbits, bipolar=False, reuse=True), ])
+                        #sc_layers[name].append([PARALLEL_CONST_MUL(weights, self.nbits, bipolar=False, reuse=True), ])
                 else: #biases
                     pass
                     #current_channels[channel]
