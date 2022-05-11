@@ -1,6 +1,7 @@
 from sim.circuits_obj import *
 from sim.SEC import *
 from sim.PTM import B_mat
+import sim.bitstreams as bs
 
 def test_parallel_func():
     AND = Circuit(np.bitwise_and, 2, 1)
@@ -29,6 +30,27 @@ def test_parallel_and_series():
     print(mux.eval(False, True, True))
     print(mux.eval(True, True, True))
 
+def test_sim_AND():
+    cir = AND()
+    rng = bs.SC_RNG()
+    px = 0.5
+    py = 0.75
+    N = 8192
+    X = rng.bs_lfsr(N, px, keep_rng=False)
+    Y = rng.bs_lfsr(N, py, keep_rng=False)
+    print(bs.bs_mean(cir.eval(X, Y), bs_len=N))
+
+def test_all_const_VALs():
+    for v in CONST_VAL.all_const_vals(4):
+        test_sim_CONST_VAL(v, 4, 8)
+
+def test_sim_CONST_VAL(const, precision, lfsr_sz):
+    N = 2 ** lfsr_sz
+    cir = CONST_VAL(const, precision, bipolar=False)
+    rng = bs.SC_RNG()
+    consts = rng.bs_lfsr_p5_consts(N, cir.actual_precision, lfsr_sz)
+    print(bs.bs_mean(cir.eval(*consts), bs_len=N))
+
 def test_CONST_VAL(): #Needs updating for actual_precision
     precision = 4
     ptv = np.array([1.0/(2**precision) for _ in range(2 ** precision)])
@@ -56,7 +78,20 @@ def test_PARALLEL_ADD():
     Mf = mux2.ptm()
     print(B_mat(2).T @ Mf.T @ ptv) #Works
 
-def test_MAC_RELU():
-    mac_relu = MAC_RELU([0.125, 0.375], [0.25, 0.5], 3)
+def test_MAC_RELU_old():
+    mac_relu = MAC_RELU([0.8125 for _ in range(4)], [0.3125 for _ in range(7)], 4)
     #ptm = mac_relu.ptm()
     print('hi')
+
+def test_MAC_RELU_small():
+    rng = bs.SC_RNG()
+    lfsr_sz = 12
+    N = 2 ** lfsr_sz
+    mac_relu = MAC_RELU([0.3125, 0.375], [0.3125, 0.375, 0.0], 4, relu=False)
+    consts = rng.bs_lfsr_p5_consts(N, mac_relu.actual_precision + 2, lfsr_sz)
+    X = [rng.bs_lfsr(N, 0.5, keep_rng=False) for _ in range(5)]
+
+    inputs = list(consts) + X
+    results = mac_relu.eval(*inputs)
+    print(bs.bs_mean(results[0], bs_len=N))
+    print(bs.bs_mean(results[1], bs_len=N))

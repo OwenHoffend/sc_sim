@@ -80,6 +80,21 @@ class SC_RNG:
             return np.packbits(bs)
         return bs
 
+    def bs_lfsr_p5_consts(self, N, num_consts, lfsr_sz, pack=True):
+        """Generate a set of parallel 0.5 constants from the same LFSR. Use these for constant generation, precise sampling, etc"""
+        if lfsr_sz < 4:
+            raise ValueError("LFSR Size is too small")
+        
+        fpoly = self._lfsr_get_fpoly(lfsr_sz)
+        L = self._lfsr_init_nonzero(fpoly, lfsr_sz, None)
+        bs = np.zeros((num_consts, N), dtype=np.bool_)
+        for i in range(N):
+            L.runKCycle(1)
+            bs[:, i] = L.state[:num_consts]
+        if pack:
+            return np.packbits(bs, axis=1)
+        return bs
+
     def up_to_bp_lfsr(self, n, up, keep_rng=True, inv=False, save_init=False):
         """Map a unipolar SN in the range [0, 1] onto a bipolar one on [0.5, 1]"""
         lfsr_sz = int(np.ceil(np.log2(2*n))) #Generate an LFSR that is slightly too large

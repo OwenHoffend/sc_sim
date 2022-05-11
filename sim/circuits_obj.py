@@ -244,6 +244,14 @@ class CONST_VAL(SeriesCircuit):
             precision -= 1
         super().__init__(layers)
 
+    @staticmethod
+    def all_const_vals(precision):
+        inc = 2 ** -precision
+        val = 0.0
+        while val <= 1:
+            yield val
+            val += inc
+
 class PARALLEL_CONST(SeriesCircuit):
     """Generate a set of parallel constant generators
         reuse: When True, the class will only generate one SNG for each unique constant
@@ -285,7 +293,7 @@ class MAC_RELU(SeriesCircuit):
         addition trees.
     """
 
-    def __init__(self, consts_pos, consts_neg, precision, bipolar=False, reuse=False):
+    def __init__(self, consts_pos, consts_neg, precision, bipolar=False, reuse=False, relu=True):
         wp = len(consts_pos)
         wn = len(consts_neg)
         p_depth = np.ceil(np.log2(wp)).astype(np.int)
@@ -300,6 +308,7 @@ class MAC_RELU(SeriesCircuit):
 
         #SNGs
         sngs = PARALLEL_CONST(consts_pos + consts_neg, precision, bipolar=bipolar, reuse=reuse)
+        self.actual_precision = sngs.actual_precision
         
         #Multiplication layers
         mul_mappings = []
@@ -341,6 +350,7 @@ class MAC_RELU(SeriesCircuit):
                 if current_w % 2 == 1:
                     adds.append(AND())
                     next_w = int((current_w - 1)/2) + 1
+                    bus_mappings.append(passed_sels)
                 else:
                     next_w = int(current_w/2)
                 if passed_sels > 0:
@@ -351,17 +361,20 @@ class MAC_RELU(SeriesCircuit):
             return SeriesCircuit(layers)
 
         sel_map = [x for x in range(depth)]
-        add_sel_mappings = sel_map + [depth + x for x in range(wp)] + sel_map + [depth + wp + x for x in range(wn)]
+        add_sel_mappings = sel_map + [depth + x for x in range(wn)] + sel_map + [depth + wn + x for x in range(wp)]
         add_layers = [
-            BUS(depth+width, 2*depth + width, add_sel_mappings),
-            ParallelCircuit([add_tree_balanced(depth, wp), add_tree_balanced(depth, wn)])
+            BUS(depth + width, 2*depth + width, add_sel_mappings, nc=depth),
+            ParallelCircuit([add_tree_balanced(depth, wn), add_tree_balanced(depth, wp)])
         ]
+
+        layers = mul_layers + add_layers
 
         #ReLU layer
-        relu_layers = [
-            ParallelCircuit([I(1), NOT()]),
-            AND()
-        ]
+        if relu:
+            relu_layers = [
+                ParallelCircuit([I(1), NOT()]),
+                AND()
+            ]
+            layers += relu_layers
 
-        layers = mul_layers + add_layers + relu_layers
         super().__init__(layers)
