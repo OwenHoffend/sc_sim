@@ -31,6 +31,21 @@ class Circuit:
         self._ptm_cache = new_ptm
 
 class ParallelCircuit(Circuit):
+    def __init__(self, circuits):
+        self.subcircuits = circuits
+        funcs = [c.func for c in circuits]
+        ns = [c.n for c in circuits]
+        func, n = ParallelCircuit._merge_funcs(funcs, ns)
+        k = sum([c.k for c in circuits])
+        nc = sum([c.nc for c in circuits])
+        super().__init__(func, n, k, nc=nc)
+
+    def ptm(self): #override
+        if self._ptm_cache is None:
+            sub_ptms = [c.ptm() for c in self.subcircuits]
+            self._ptm_cache = reduce(lambda a, b: np.kron(a, b), sub_ptms)
+        return self._ptm_cache
+
     def _parallel_func(func1, func2, n1, n2):
         def new_func(*args):
             assert len(args) == n1 + n2
@@ -56,22 +71,20 @@ class ParallelCircuit(Circuit):
             ntot += n
         return func, ntot
 
+
+class SeriesCircuit(Circuit):
     def __init__(self, circuits):
         self.subcircuits = circuits
         funcs = [c.func for c in circuits]
-        ns = [c.n for c in circuits]
-        func, n = ParallelCircuit._merge_funcs(funcs, ns)
-        k = sum([c.k for c in circuits])
-        nc = sum([c.nc for c in circuits])
-        super().__init__(func, n, k, nc=nc)
+        func = SeriesCircuit._merge_funcs(funcs)
+        super().__init__(func, circuits[0].n, circuits[-1].k, nc=circuits[0].nc)
 
     def ptm(self): #override
         if self._ptm_cache is None:
             sub_ptms = [c.ptm() for c in self.subcircuits]
-            self._ptm_cache = reduce(lambda a, b: np.kron(a, b), sub_ptms)
+            self._ptm_cache = reduce(lambda a, b: a @ b, sub_ptms)
         return self._ptm_cache
-
-class SeriesCircuit(Circuit):
+        
     def _series_func(func1, func2):
         #assert k1 == n2
         def new_func(*args):
@@ -84,17 +97,6 @@ class SeriesCircuit(Circuit):
             func = SeriesCircuit._series_func(func, f)
         return func
 
-    def __init__(self, circuits):
-        self.subcircuits = circuits
-        funcs = [c.func for c in circuits]
-        func = SeriesCircuit._merge_funcs(funcs)
-        super().__init__(func, circuits[0].n, circuits[-1].k, nc=circuits[0].nc)
-
-    def ptm(self): #override
-        if self._ptm_cache is None:
-            sub_ptms = [c.ptm() for c in self.subcircuits]
-            self._ptm_cache = reduce(lambda a, b: a @ b, sub_ptms)
-        return self._ptm_cache
 
 #CIRCUIT LIBRARY
 class CONST_1(Circuit):
@@ -300,6 +302,9 @@ class MAC_RELU(SeriesCircuit):
         n_depth = np.ceil(np.log2(wn)).astype(np.int)
         depth = max(p_depth, n_depth)
         width = wp + wn
+
+        self.depth = depth
+        self.width = width
 
         #Input signal layout:
         #depth x sel consts

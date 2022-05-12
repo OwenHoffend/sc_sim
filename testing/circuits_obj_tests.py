@@ -78,16 +78,11 @@ def test_PARALLEL_ADD():
     Mf = mux2.ptm()
     print(B_mat(2).T @ Mf.T @ ptv) #Works
 
-def test_MAC_RELU_old():
-    mac_relu = MAC_RELU([0.8125 for _ in range(4)], [0.3125 for _ in range(7)], 4)
-    #ptm = mac_relu.ptm()
-    print('hi')
-
 def test_MAC_RELU_small():
     rng = bs.SC_RNG()
     lfsr_sz = 12
     N = 2 ** lfsr_sz
-    mac_relu = MAC_RELU([0.3125, 0.375], [0.3125, 0.375, 0.0], 4, relu=False)
+    mac_relu = MAC_RELU([0.3125, 0.375, 0.0], [0.3125, 0.375], 4, relu=False)
     consts = rng.bs_lfsr_p5_consts(N, mac_relu.actual_precision + 2, lfsr_sz)
     X = [rng.bs_lfsr(N, 0.5, keep_rng=False) for _ in range(5)]
 
@@ -95,3 +90,18 @@ def test_MAC_RELU_small():
     results = mac_relu.eval(*inputs)
     print(bs.bs_mean(results[0], bs_len=N))
     print(bs.bs_mean(results[1], bs_len=N))
+
+def test_MAC_RELU(consts_pos, consts_neg, precision, lfsr_sz=9, iters=100, relu=False):
+    rng = bs.SC_RNG()
+    N = 2 ** lfsr_sz
+    mac_relu = MAC_RELU(consts_pos, consts_neg, precision, relu=relu)
+    consts = rng.bs_lfsr_p5_consts(N, mac_relu.actual_precision + mac_relu.depth, lfsr_sz, add_zero_state=True)
+    for i in range(iters):
+        px = np.random.uniform(size=mac_relu.width)
+        bsx = [rng.bs_lfsr(N, p, keep_rng=False, add_zero_state=True) for p in px]
+        inputs = list(consts) + bsx
+        results = mac_relu.eval(*inputs)
+        if relu: #Evaluate based on ReLU
+            pass 
+        else:
+            pass #Evaluate based on pos/neg MAC trees

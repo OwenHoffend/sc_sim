@@ -24,28 +24,42 @@ class SC_RNG:
         self.lfsr_sz = lfsr_sz
         return self.fpoly
 
-    def _lfsr_init_nonzero(self, fpoly, lfsr_sz, init_state):
+    def _lfsr_init_nonzero(self, fpoly, lfsr_sz, init_state, add_zero_state=False):
+        all_zeros = np.zeros(lfsr_sz)
+        if add_zero_state:
+            while True:
+                self.zero_state = np.random.randint(2, size=lfsr_sz) #Randomly decide where to put the init state
+                if not np.all(self.zero_state == all_zeros):
+                    break
         if init_state is None:
             while True:
                 L = LFSR(fpoly=fpoly, initstate='random')
-                if not np.all(L.state == np.zeros(lfsr_sz)):
+                if not np.all(L.state == all_zeros):
                     break
             return L
         return LFSR(fpoly=fpoly, initstate=init_state)
 
-    def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False, save_init=False, init_state=None):
+    def _run_lfsr(self, n, lfsr_sz, keep_rng=True, inv=False, save_init=False, init_state=None, add_zero_state=False):
         if not keep_rng or self.lfsr is None:
             fpoly = self._lfsr_get_fpoly(lfsr_sz)
             if save_init:
                 if self.lfsr_init is None:
-                    L = self._lfsr_init_nonzero(fpoly, lfsr_sz, init_state)
+                    L = self._lfsr_init_nonzero(fpoly, lfsr_sz, init_state, add_zero_state=add_zero_state)
                     self.lfsr_init = L.state
                 else:
                     L = LFSR(fpoly=fpoly, initstate=self.lfsr_init)
             else:
-                L = self._lfsr_init_nonzero(fpoly, lfsr_sz, init_state)
+                L = self._lfsr_init_nonzero(fpoly, lfsr_sz, init_state, add_zero_state=add_zero_state)
             self.lfsr = np.zeros(n, dtype=np.uint32)
+            last_was_zero = False
             for i in range(n):
+                if add_zero_state and \
+                    not last_was_zero and \
+                    np.all(L.state == self.zero_state):
+                        self.lfsr[i] = 0
+                        last_was_zero = True
+                        continue
+                last_was_zero = False
                 L.runKCycle(1)
                 self.lfsr[i] = bit_vec_to_int(L.state)
         if inv:
@@ -68,27 +82,36 @@ class SC_RNG:
             return np.packbits(result)
         return result
 
-    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, init_state=None, pack=True): #Warning: when keep_rng=False, runtime is very slow 
+    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, init_state=None, pack=True, add_zero_state=False): #Warning: when keep_rng=False, runtime is very slow 
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
         lfsr_sz = int(np.ceil(np.log2(n)))
         if lfsr_sz < 4: 
             raise ValueError("LFSR Size is too small")
-        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init, init_state=init_state)
+        lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init,
+                                    init_state=init_state, add_zero_state=add_zero_state)
         bs = lfsr_run / ((2**lfsr_sz)-1) <= p
         #assert bs_mean(bs) == p
         if pack:
             return np.packbits(bs)
         return bs
 
-    def bs_lfsr_p5_consts(self, N, num_consts, lfsr_sz, pack=True):
+    def bs_lfsr_p5_consts(self, N, num_consts, lfsr_sz, pack=True, add_zero_state=False):
         """Generate a set of parallel 0.5 constants from the same LFSR. Use these for constant generation, precise sampling, etc"""
         if lfsr_sz < 4:
             raise ValueError("LFSR Size is too small")
         
         fpoly = self._lfsr_get_fpoly(lfsr_sz)
-        L = self._lfsr_init_nonzero(fpoly, lfsr_sz, None)
+        L = self._lfsr_init_nonzero(fpoly, lfsr_sz, None, add_zero_state=add_zero_state)
         bs = np.zeros((num_consts, N), dtype=np.bool_)
+        last_was_zero = False
         for i in range(N):
+            if add_zero_state and \
+                not last_was_zero and \
+                np.all(L.state == self.zero_state):
+                    bs[:, i] = np.zeros(num_consts, dtype=np.bool_)
+                    last_was_zero = True
+                    continue
+            last_was_zero = False
             L.runKCycle(1)
             bs[:, i] = L.state[:num_consts]
         if pack:
