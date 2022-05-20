@@ -1,4 +1,3 @@
-from audioop import mul
 import numpy as np
 from functools import reduce
 from sim.PTM import get_func_mat
@@ -70,7 +69,6 @@ class ParallelCircuit(Circuit):
             func = ParallelCircuit._parallel_func(func, f, ntot, n)
             ntot += n
         return func, ntot
-
 
 class SeriesCircuit(Circuit):
     def __init__(self, circuits):
@@ -259,7 +257,8 @@ class PARALLEL_CONST(SeriesCircuit):
         reuse: When True, the class will only generate one SNG for each unique constant
              an appropriate BUS will be added to connect the SNG to duplicate instances
 
-        Generates CORRELATED bitstreams. For un-correlated, simply use ParallelCircuit([CONST_VAL(), CONST_VAL(), ...])
+        Bitstreams that this generates don't have any correlation assumption
+        For un-correlated, simply use ParallelCircuit([CONST_VAL(), CONST_VAL(), ...])
     """
     def __init__(self, consts, precision, bipolar=True, reuse=False):
         if reuse:
@@ -275,7 +274,7 @@ class PARALLEL_CONST(SeriesCircuit):
     def _parallel_consts(self, consts, precision, bipolar=True):
         """Old init function, from before the ability to reuse SNGs was added"""
         const_vals = [CONST_VAL(const, precision, bipolar=bipolar) for const in reversed(consts)]
-        precisions = [x.actual_precision for x in reversed(const_vals)]
+        precisions = [x.actual_precision for x in const_vals]
         self.actual_precision = max(precisions)
         sp = sum(precisions)
         mappings = []
@@ -312,7 +311,7 @@ class MAC_RELU(SeriesCircuit):
         #width x X_inputs
 
         #SNGs
-        sngs = PARALLEL_CONST(consts_pos + consts_neg, precision, bipolar=bipolar, reuse=reuse)
+        sngs = PARALLEL_CONST(list(reversed(consts_pos + consts_neg)), precision, bipolar=bipolar, reuse=reuse)
         self.actual_precision = sngs.actual_precision
         
         #Multiplication layers
@@ -330,6 +329,8 @@ class MAC_RELU(SeriesCircuit):
             ParallelCircuit([I(depth, nc=depth), BUS(2*width, 2*width, mul_mappings)]),
             ParallelCircuit([I(depth, nc=depth), muls])
         ]
+
+        #self.mul_circuit = SeriesCircuit(mul_layers) #DEBUG ONLY
 
         #Signal layout after mul layer:
         #depth x sel consts
@@ -371,6 +372,8 @@ class MAC_RELU(SeriesCircuit):
             BUS(depth + width, 2*depth + width, add_sel_mappings, nc=depth),
             ParallelCircuit([add_tree_balanced(depth, wn), add_tree_balanced(depth, wp)])
         ]
+
+        #self.add_input_test = SeriesCircuit(mul_layers + [add_layers[0], ]) #DEBUG ONLY
 
         layers = mul_layers + add_layers
 
