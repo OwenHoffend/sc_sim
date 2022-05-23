@@ -114,6 +114,7 @@ class SC_RNG:
             last_was_zero = False
             L.runKCycle(1)
             bs[:, i] = L.state[:num_consts]
+        #print(get_corr_mat_np(bs)) #Confirms that the bitstreams we generated have SCC=0
         if pack:
             return np.packbits(bs, axis=1)
         return bs

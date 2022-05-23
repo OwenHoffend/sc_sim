@@ -147,7 +147,7 @@ class Polynomial:
         latex_str = ""
         for term, coeff in self.poly.items():
             _term = re.sub(r"\*|\(|\)|\@|\^1|\.0", '', term) #Remove extra syntax
-            _term = re.sub(r"(?<=[a-zA-Z])[\d]+", r"_\g<0>", _term) #Add subscripting to variables
+            _term = re.sub(r"(?<=[a-zA-Z])[\d]+", r"_{\g<0>}", _term) #Add subscripting to variables
             _coeff = re.sub(r"\.0", '', coeff)
             if float(coeff) < 0:
                 latex_str = latex_str[:-1]
@@ -164,6 +164,11 @@ def scalar_mat_poly(mat):
         for j in range(n):
             out[i, j] = Polynomial(poly_string="{}(@^1)".format(mat[i,j]))
     return out
+
+def vin_poly(nvars, vname='v'):
+    dim = 2 ** nvars
+    vec = np.array([Polynomial(poly_string="1.0({}{}^1)".format(vname, i)) for i in range(dim)], dtype=object)
+    return np.expand_dims(vec, axis=1)
 
 def vin_poly_bernoulli_mc0(nvars):
     dim = 2 ** nvars

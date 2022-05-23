@@ -42,3 +42,37 @@ def test_kron_ptv(n):
 
 def ptv_generation_tests_main():
     test_kron_ptv(8)
+
+def test_ptv_swap():
+    """Generate the following correlation matrix:
+    x_1 1 1 0 0 0
+    x_3 1 1 0 0 0
+    x_2 0 0 1 0 0
+    x_4 0 0 0 1 0
+    x_5 0 0 0 0 1
+
+    Then do a symmetric permutation to get:
+    x_1 1 0 1 0 0
+    x_2 0 1 0 0 0
+    x_3 1 0 1 0 0
+    x_4 0 0 0 1 0
+    x_5 0 0 0 0 1
+    """
+    N = 10000
+    p_arr = np.random.uniform(size=5)
+    print(p_arr)
+    top_ptv = get_vin_mc0(np.array([p_arr[1], p_arr[3], p_arr[4]]))
+    bot_ptv = get_vin_mc1(np.array([p_arr[0], p_arr[2]]))
+
+    ptv_pre_perm = np.kron(top_ptv, bot_ptv)
+    b5 = B_mat(5)
+    bs_mat = sample_from_ptv(ptv_pre_perm, N)
+    actual_ptv_pre_perm = get_actual_vin(bs_mat)
+    print(get_corr_mat_paper(actual_ptv_pre_perm))
+    print(list(reversed(b5.T @ actual_ptv_pre_perm)))
+
+    ptv = PTV_swap_cols(ptv_pre_perm, [0, 2, 1, 3, 4])
+    bs_mat = sample_from_ptv(ptv, N)
+    actual_ptv = get_actual_vin(bs_mat)
+    print(get_corr_mat_paper(actual_ptv))
+    print(list(reversed(b5.T @ actual_ptv)))

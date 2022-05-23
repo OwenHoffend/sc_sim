@@ -134,7 +134,7 @@ def test_vin_poly_bernoulli_mc1():
     print(mat_to_latex(np.expand_dims(mat, axis=1)))
 
 #vin_covmat_bernoulli test
-def test_vin_covman_bernoulli():
+def test_vin_covmat_bernoulli():
     mat0 = vin_covmat_bernoulli(2)
     print(mat0)
 
@@ -163,6 +163,25 @@ def xor_4_2_under_c1():
     print(Mf)
     xor_cov = symbolic_cov_mat_bernoulli(Mf, 4, 2, corr=1)
     print(mat_to_latex(xor_cov))
+
+def mux_4_2_for_all_vin():
+    """Given an input vin, get the output vout for the 4->2 mux circuit in symbolic form, in terms of vin entries"""
+    Mf = pm.get_func_mat(cir.mux_2_joint_const, 5, 2)
+    Mf_poly = scalar_mat_poly(Mf * 1)
+    vin = vin_poly(5)
+    print(mat_to_latex(vin))
+    print(mat_to_latex(Mf_poly))
+    print(mat_to_latex(Mf_poly.T @ vin))
+
+def mux_4_2_corr_perturbation_test():
+    Mf = pm.get_func_mat(cir.mux_2_joint_const, 5, 2)
+    Mf_poly = scalar_mat_poly(Mf * 1)
+    vc_px = vin_poly(5)
+    v1_x1_x3 = vin_poly(2, vname='a')
+    v0_x2_x4_s = vin_poly(3, vname='b')
+    v0_px = vin_poly(5, vname='c')
+
+    
 
 def symbolic_manip_main():
     """Old stuff that was in the main function of variance_analysis.py - not sorted"""
