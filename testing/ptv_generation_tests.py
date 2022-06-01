@@ -76,3 +76,51 @@ def test_ptv_swap():
     actual_ptv = get_actual_vin(bs_mat)
     print(get_corr_mat_paper(actual_ptv))
     print(list(reversed(b5.T @ actual_ptv)))
+
+def test_ptv_swap_2():
+    """Generate the following correlation matrix:
+    x_1 1 1 0 0 0
+    x_3 1 1 0 0 0
+    x_2 0 0 1 0 0
+    x_4 0 0 0 1 0
+    x_5 0 0 0 0 1
+
+    Then do a symmetric permutation to get:
+    x_1 1 0 0 0 0
+    x_2 0 1 0 1 0
+    x_3 0 0 1 0 0
+    x_4 0 1 0 1 0
+    x_5 0 0 0 0 1
+    """
+    N = 10000
+    p_arr = np.random.uniform(size=5)
+    print(p_arr)
+    top_ptv = get_vin_mc0(np.array([p_arr[1], p_arr[2], p_arr[4]]))
+    bot_ptv = get_vin_mc1(np.array([p_arr[0], p_arr[3]]))
+
+    ptv_pre_perm = np.kron(bot_ptv, top_ptv)
+    b5 = B_mat(5)
+    bs_mat = sample_from_ptv(ptv_pre_perm, N)
+    actual_ptv_pre_perm = get_actual_vin(bs_mat)
+    print(get_corr_mat_paper(actual_ptv_pre_perm))
+    print(list(reversed(b5.T @ actual_ptv_pre_perm)))
+
+    ptv = PTV_swap_cols(ptv_pre_perm, [3, 1, 2, 0, 4])
+    bs_mat = sample_from_ptv(ptv, N)
+    actual_ptv = get_actual_vin(bs_mat)
+    print(get_corr_mat_paper(actual_ptv))
+    print(list(reversed(b5.T @ actual_ptv)))
+
+def test_corr_mat_perturbation():
+    delta = 0.5
+    N = 100000
+    p_arr = np.random.uniform(size=4)
+
+    #zero correlation to start
+    base_ptv = get_vin_mc0(p_arr)
+    ptv_0 = get_vin_mc0(p_arr)
+    base_corr = np.kron(get_vin_mc1(p_arr[2:]), get_vin_mc1(p_arr[:2])) 
+    result = base_ptv + delta * (base_corr - ptv_0) 
+    print(np.sum(result))
+    bs_mat = sample_from_ptv(result, N)
+    print(get_corr_mat_paper(get_actual_vin(bs_mat)))

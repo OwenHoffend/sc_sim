@@ -170,16 +170,18 @@ def vin_poly(nvars, vname='v'):
     vec = np.array([Polynomial(poly_string="1.0({}{}^1)".format(vname, i)) for i in range(dim)], dtype=object)
     return np.expand_dims(vec, axis=1)
 
-def vin_poly_bernoulli_mc0(nvars):
+def vin_poly_bernoulli_mc0(nvars, vnames='p'):
     dim = 2 ** nvars
     Bn = cp.B_mat(nvars)
     vin = np.zeros((dim,), dtype=object)
-    pos_polys = [Polynomial(poly_string="1.0(p{}^1)".format(i)) for i in range(nvars)]
-    neg_polys = [Polynomial(poly_string="1.0(@^1)-1.0(p{}^1)".format(i)) for i in range(nvars)]
+    if type(vnames) == str:
+        vnames = ["{}{}".format(vnames, i) for i in range(nvars)]
+    pos_polys = [Polynomial(poly_string="1.0({}^1)".format(vnames[i])) for i in range(nvars)]
+    neg_polys = [Polynomial(poly_string="1.0(@^1)-1.0({}^1)".format(vnames[i])) for i in range(nvars)]
     for i in range(dim):
         row_poly = [pos_polys[j] if Bn[i][j] else neg_polys[j] for j in range(nvars)]
         vin[i] = functools.reduce(lambda a, b: a*b, row_poly)
-    return vin
+    return np.expand_dims(vin, axis=1)
 
 def vin_poly_bernoulli_mc1(nvars, ordering=None, names=None):
     dim = 2 ** nvars

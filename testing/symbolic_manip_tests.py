@@ -1,3 +1,4 @@
+from itertools import permutations
 import numpy as np
 import matplotlib.pyplot as plt
 import sim.PTM as pm
@@ -123,6 +124,14 @@ def test_np_mul():
     result = test_vec @ test_vec.T
     print(result[0,0].poly)
 
+def test_multiple_vars():
+    """test that a(1-b)+ab == a"""
+    a = Polynomial(poly_string="1.0(a^1)")
+    onem_b = Polynomial(poly_string="1.0(@^1)-1.0(b^1)")
+    ab = Polynomial(poly_string="1.0(a^1*b^1)")
+    result = a * onem_b + ab
+    print(result.poly)
+
 #vin_poly_bernoulli_mc0 test
 def test_vin_poly_bernoulli_mc0():
     mat = vin_poly_bernoulli_mc0(4)
@@ -132,6 +141,13 @@ def test_vin_poly_bernoulli_mc0():
 def test_vin_poly_bernoulli_mc1():
     mat = vin_poly_bernoulli_mc1(2, names=['p1', 'p2'])
     print(mat_to_latex(np.expand_dims(mat, axis=1)))
+
+def test_long_variable_name():
+    a = Polynomial(poly_string="1.0(min[p_1, p_2]^1)")
+    b = Polynomial(poly_string="1.0(min[p_1, p_2]^1)")
+    c = Polynomial(poly_string="1.0(min[p_1, p_3]^1)")
+    result = a + b + c
+    print(result.poly)
 
 #vin_covmat_bernoulli test
 def test_vin_covmat_bernoulli():
@@ -174,14 +190,38 @@ def mux_4_2_for_all_vin():
     print(mat_to_latex(Mf_poly.T @ vin))
 
 def mux_4_2_corr_perturbation_test():
-    Mf = pm.get_func_mat(cir.mux_2_joint_const, 5, 2)
+    Mf = pm.reduce_func_mat(pm.get_func_mat(cir.mux_2_joint_const, 5, 2), 4, 0.5)
     Mf_poly = scalar_mat_poly(Mf * 1)
-    vc_px = vin_poly(5)
-    v1_x1_x3 = vin_poly(2, vname='a')
-    v0_x2_x4_s = vin_poly(3, vname='b')
-    v0_px = vin_poly(5, vname='c')
 
-    
+    v1_x0_x2 = vin_poly(2, vname='a')
+    #v1_x0_x1 = vin_poly(2, vname=['a'])
+    v0_x1_x3 = vin_poly_bernoulli_mc0(2, vnames=['p1', 'p3'])
+    vc_px = vin_poly_bernoulli_mc0(4, vnames=['p0', 'p1', 'p2', 'p3'])
+
+    ab = np.kron(v0_x1_x3, v1_x0_x2)
+    #ab = np.kron(v0_x2_x3, v1_x0_x1)
+    ab_permuted = pm.PTV_swap_cols(ab, [0, 2, 1, 3])
+    print(mat_to_latex(Mf_poly.T @ ab_permuted))
+
+    #d = Polynomial(poly_string="1.0(d^1)")
+    #onem_d = Polynomial(poly_string="1.0(@^1)-1.0(d^1)")
+
+    #new_vin = np.multiply(onem_d, vc_px) + np.multiply(d, ab_permuted)
+    #new_vin = np.multiply(onem_d, vc_px) + np.multiply(d, ab)
+    #print(mat_to_latex(Mf_poly.T @ vc_px))
+    #print(mat_to_latex(Mf_poly.T @ ab))
+    #print(mat_to_latex(Mf_poly.T @ new_vin))
+
+def mux_4_2_corr_perturbation_test_2():
+    Mf = pm.reduce_func_mat(pm.get_func_mat(cir.mux_2_joint_const, 5, 2), 4, 0.5)
+    Mf_poly = scalar_mat_poly(Mf * 1)
+
+    v1_x0_x3 = vin_poly(2, vname='a')
+    v0_x1_x2 = vin_poly_bernoulli_mc0(2, vnames=['p1', 'p2'])
+    ab = np.kron(v1_x0_x3, v0_x1_x2)
+    ab_permuted = pm.PTV_swap_cols(ab, [3, 1, 2, 0])
+    print(mat_to_latex(Mf_poly.T @ ab_permuted))
+
 
 def symbolic_manip_main():
     """Old stuff that was in the main function of variance_analysis.py - not sorted"""

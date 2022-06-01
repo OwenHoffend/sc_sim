@@ -234,7 +234,7 @@ def deterministic_sample_from_ptv(ptv, N):
 
 def PTV_swap_cols(ptv, swap_inds):
     n_2 = ptv.size
-    Bn = B_mat(np.log2(n_2))
+    Bn = B_mat(np.log2(n_2).astype(np.int))
     ptv_swap_inds = int_array(Bn[:, swap_inds])
     return ptv[ptv_swap_inds]
 
