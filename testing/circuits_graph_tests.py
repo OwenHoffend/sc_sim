@@ -44,7 +44,8 @@ def test_MUX_graph():
     G.add_edge(11, 0, 13, 0)
 
     print(G.is_graph_complete())
-    print(G.is_primitive())
+    print(G.is_flat())
+    print(G.get_ptm())
     G.render_graphviz(fn='1')
 
     #Experimentation with graph-based logic optimization
@@ -110,7 +111,7 @@ def test_parallel_const_mul():
     G.add_edge(13, 0, 15, 0)
 
     print(G.is_graph_complete())
-    print(G.is_primitive())
+    print(G.is_flat())
     G.render_graphviz('1')
 
     selected_inputs = [0, 1, 2, 3, 5]
@@ -121,3 +122,15 @@ def test_parallel_const_mul():
     remaining_endpoints = [endpoints[1], endpoints[2]]
     G2.render_graphviz(fn='3')
     G.render_graphviz(fn='4')
+
+def test_circuit_graph_hierarchy():
+    G = G_Circuit_MUX_PAIR()
+    assert not G.is_flat()
+    G.render_graphviz(fn="mux_pair")
+    G2 = G.get_flattened()
+    G2.render_graphviz(fn="mux_pair_flat")
+
+def test_get_ptm():
+    cir = G_Circuit_MUX()
+    ptm = cir.get_ptm()
+    print(ptm)

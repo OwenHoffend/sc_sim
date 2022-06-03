@@ -1,6 +1,9 @@
 import numpy as np
+import copy
 import graphviz
+from functools import reduce
 from enum import IntEnum
+from sim.PTM import get_func_mat
 
 class VState(IntEnum):
     UNVISITED      = 0
@@ -38,6 +41,7 @@ class G_Circuit():
         self.visit_state = VState.UNVISITED
         self.primitive = primitive
         self.name = name
+        self.ptm = None
 
         self.subgraph_idx = None #metadata for extracting subgraphs
 
@@ -97,6 +101,12 @@ class G_Circuit():
         assert len(outputs) == self.k
         return outputs
 
+    def get_edges(self):
+        e = []
+        for outs in self.fwd_edges:
+            e += outs
+        return e
+
     def is_graph_complete(self):
         """Checks that all nodes in the graph have the requried number of ingoing and outgoing edges
         mostly just used as a sanity check"""
@@ -107,7 +117,7 @@ class G_Circuit():
                 return False
         return True
 
-    def is_primitive(self):
+    def is_flat(self):
         """Checks if this circuit is a graph connecting only AND/OR/NOT circuit elements"""
         for node in self.nodes:
             if not node.primitive:
@@ -122,8 +132,15 @@ class G_Circuit():
                 return False
         return True
 
+    def reset_inputs(self):
+        for node in self.nodes:
+            node.reset_inputs()
+
     def eval(self, *args):
+        assert self.is_flat() #FIXME: eval is currently broken for non-flat circuits
         assert len(args) == self.n
+        self.reset_inputs()
+        assert not self.has_all_inputs()
         for idx, arg in enumerate(args):
             self.add_input(arg, idx)
         assert self.has_all_inputs()
@@ -137,7 +154,7 @@ class G_Circuit():
             for edge in self.fwd_edges[node_idx]:
                 dest_idx = edge.dest
                 dest_node = self.nodes[dest_idx]
-                if type(node_outs) == list: 
+                if type(node_outs) == np.ndarray: 
                     val = node_outs[edge.src_out]
                 else:
                     val = node_outs
@@ -149,7 +166,7 @@ class G_Circuit():
             output_node = self.nodes[output_idx]
             assert output_node.has_all_inputs()
             outs.append(output_node.eval())
-        return outs
+        return np.array(outs)
 
     def fwd_logic_cone(self, selected_inputs):
         """Forward pass of the sub-circuit PTM optimization algorithm from the wk_5_11_22 slides"""
@@ -166,11 +183,10 @@ class G_Circuit():
                 edge.visit_state = VState.FWD_VISIT
                 found_edges.append(edge) #May need to copy edge instance
                 dest_idx = edge.dest
-                last_visited = True
                 for incoming_edge in self.back_edges[dest_idx]:
                     if incoming_edge.visit_state != VState.FWD_VISIT:
-                        last_visited = False
-                if last_visited:
+                        break
+                else:
                     queue.append(dest_idx)
 
         #Get the new endpoint edges
@@ -245,6 +261,79 @@ class G_Circuit():
                     edge.visit_state = VState.DUPLICATE
                 queue.append(edge.src)
 
+    def get_flattened(self):
+        """Convert to a graph representing the connections between primitive nodes only, no sub-circuits"""
+        new_graph = copy.deepcopy(self)
+        if self.is_flat():
+            return new_graph
+        
+        #identify nodes to flatten
+        to_flatten = []
+        to_flatten_idx = []
+        to_keep = []
+        for idx, node in enumerate(self.nodes):
+            if node.primitive:
+                to_keep.append(node)
+            else:
+                to_flatten.append(node)
+                to_flatten_idx.append(idx)
+
+        for (idx, node) in zip(to_flatten_idx, to_flatten):
+            node = node.get_flattened() #Recursive call
+            offset = len(new_graph.nodes)
+
+            #insert new nodes
+            for sub_node in node.nodes:
+                new_graph.add_node(sub_node)
+
+            #break edges that cross the sub-circuit boundary
+            for edge in list(new_graph.back_edges[idx]):
+                new_graph.add_edge(edge.src, edge.src_out, offset + edge.dest_in, 0)
+                new_graph.fwd_edges[edge.src].remove(edge)
+                new_graph.back_edges[edge.dest].remove(edge)
+            for edge in list(new_graph.fwd_edges[idx]):
+                new_graph.add_edge(offset + edge.dest_in, 0, edge.dest, edge.dest_in)
+                new_graph.fwd_edges[edge.src].remove(edge)
+                new_graph.back_edges[edge.dest].remove(edge)
+
+            #add new edges
+            for sub_edge in node.get_edges():
+                new_graph.add_edge(sub_edge.src + offset, sub_edge.src_out, sub_edge.dest + offset, sub_edge.dest_in)
+        return new_graph
+
+    def get_ptm(self):
+        if self.ptm is not None:
+            return self.ptm
+
+        #assert self.is_flat()
+        #queue = self.get_input_nodes()
+        #for node_idx in queue: #set starting ptms
+        #    self.nodes[node_idx].get_ptm()
+        #while queue != []:
+        #    node_idx = queue.pop(0)
+        #    for edge in self.fwd_edges[node_idx]:
+        #        dest_idx = edge.dest
+        #        dest_node = self.nodes[dest_idx]
+        #        if dest_node.ptm is not None:
+        #            continue
+        #        par_ptms = []
+        #        for incoming_edge in self.back_edges[dest_idx]:
+        #            incoming_ptm = self.nodes[incoming_edge.src].ptm
+        #            if incoming_ptm is None:
+        #                break
+        #            par_ptms.append(incoming_ptm)
+        #        else:
+        #            par = reduce(np.kron, par_ptms)
+        #            dest_node.ptm = par @ dest_node.get_ptm()
+        #            queue.append(dest_idx)
+        #self.ptm = reduce(np.kron, [self.nodes[out].ptm for out in self.get_output_nodes()])
+
+        def eval_wrapper(*args):
+            return self.eval(*args)
+
+        self.ptm = get_func_mat(eval_wrapper, self.n, self.k)
+        return self.ptm
+
 class G_Circuit_Prim(G_Circuit):
     def __init__(self, n, k, func, name):
         self.inputs = [None for _ in range(n)]
@@ -256,6 +345,9 @@ class G_Circuit_Prim(G_Circuit):
         assert idx < self.n
         self.inputs[idx] = val
 
+    def reset_inputs(self):
+        self.inputs = [None for _ in range(self.n)]
+
     def has_all_inputs(self):
         for input in self.inputs:
             if input is None:
@@ -264,15 +356,40 @@ class G_Circuit_Prim(G_Circuit):
 
     def eval(self):
         assert self.has_all_inputs()
-        return self.func(*self.inputs)
+        f = self.func(*self.inputs)
+        self.reset_inputs()
+        return f
+
+    def get_ptm(self):
+        if self.ptm is None:
+            self.ptm = get_func_mat(self.func, self.n, self.k)
+        return self.ptm
         
 class G_Circuit_IN(G_Circuit_Prim):
     def __init__(self, k=1):
-        super().__init__(1, k, lambda x: [x for _ in range(k)], 'IN')
+        super().__init__(1, k, lambda x: np.array([x for _ in range(k)]), 'IN')
+
+    def get_ptm(self): 
+        #Inputs are primitive but they can have multiple outputs, however the PTM must be given
+        #as though there's only a single output
+        if self.ptm is None:
+            self.ptm = np.array([
+                [True, False],
+                [False, True]
+            ])
+        return self.ptm
 
 class G_Circuit_OUT(G_Circuit_Prim):
     def __init__(self):
         super().__init__(1, 0, lambda x: x, 'OUT')
+
+    def get_ptm(self):
+        if self.ptm is None:
+            self.ptm = np.array([
+                [True, False],
+                [False, True]
+            ])
+        return self.ptm
 
 class G_Circuit_AND(G_Circuit_Prim):
     def __init__(self, k=1):
@@ -285,3 +402,45 @@ class G_Circuit_OR(G_Circuit_Prim):
 class G_Circuit_NOT(G_Circuit_Prim):
     def __init__(self, k=1):
         super().__init__(1, k, np.bitwise_not, 'NOT')
+
+#Circuit library
+class G_Circuit_MUX(G_Circuit):
+    def __init__(self):
+        super().__init__(3, 1, name='MUX')
+        self.add_node(G_Circuit_IN())
+        self.add_node(G_Circuit_IN())
+        self.add_node(G_Circuit_IN(k=2))
+        self.add_node(G_Circuit_NOT())
+        self.add_node(G_Circuit_AND())
+        self.add_node(G_Circuit_AND())
+        self.add_node(G_Circuit_OR())
+        self.add_node(G_Circuit_OUT())
+
+        self.add_edge(0,0,4,0)
+        self.add_edge(1,0,5,0)
+        self.add_edge(2,0,3,0)
+        self.add_edge(3,0,4,1)
+        self.add_edge(2,1,5,1)
+        self.add_edge(4,0,6,0)
+        self.add_edge(5,0,6,1)
+        self.add_edge(6,0,7,0)
+
+class G_Circuit_MUX_PAIR(G_Circuit):
+    def __init__(self):
+        super().__init__(5, 2, name='MUX_PAIR')
+        for _ in range(4):
+            self.add_node(G_Circuit_IN())
+        self.add_node(G_Circuit_IN(k=2))
+        for _ in range(2):
+            self.add_node(G_Circuit_MUX())
+        for _ in range(2):
+            self.add_node(G_Circuit_OUT())
+        
+        self.add_edge(0,0,5,0)
+        self.add_edge(1,0,5,1)
+        self.add_edge(2,0,6,0)
+        self.add_edge(3,0,6,1)
+        self.add_edge(4,0,5,2)
+        self.add_edge(4,1,6,2)
+        self.add_edge(5,0,7,0)
+        self.add_edge(6,0,8,0)
