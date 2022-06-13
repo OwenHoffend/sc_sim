@@ -126,9 +126,10 @@ def test_parallel_const_mul():
 def test_circuit_graph_hierarchy():
     G = G_Circuit_MUX_PAIR()
     assert not G.is_flat()
-    G.render_graphviz(fn="mux_pair")
-    G2 = G.get_flattened()
-    G2.render_graphviz(fn="mux_pair_flat")
+    #G.render_graphviz(fn="mux_pair")
+    G.flatten()
+    #assert G2.is_graph_complete()
+    G.render_graphviz(fn="mux_pair_flat")
 
 def test_get_ptm():
     cir = G_Circuit_MUX()

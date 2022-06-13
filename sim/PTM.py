@@ -258,6 +258,20 @@ def get_func_mat(func, n, k):
         Mf[i][num] = 1
     return Mf
 
+def apply_ptm_to_bs(bs_mat, Mf):
+    """Given a set of input bitstrems, compute the output bitstreams for the circuit defined by the PTM Mf
+    FOR NOW: Doesn't consider packing
+    """
+    n, N = bs_mat.shape
+    n2, k2 = Mf.shape
+    k = np.log2(k2).astype(np.int)
+    ints = int_array(bs_mat.T)
+    bs_out = np.zeros((k, N), dtype=np.bool_)
+    bm = B_mat(k)
+    for i in range(N):
+        bs_out[:, i] = Mf[ints[i], :] @ bm
+    return bs_out
+
 def reduce_func_mat(Mf, idx, p):
     """Reduce a PTM matrix with a known probability value on one input"""
     n, k = np.log2(Mf.shape).astype(np.uint16)

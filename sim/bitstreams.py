@@ -132,10 +132,10 @@ class SC_RNG:
         up = (bp + 1.0) / 2.0
         return self.bs_lfsr(n, up, keep_rng=keep_rng, inv=inv, save_init=save_init)
 
-    def bs_bp_uniform(self, n, bp, keep_rng=True, inv=False):
+    def bs_bp_uniform(self, n, bp, keep_rng=True, inv=False, pack=True):
         """Generate a bipolar stochastic bitstream via the bs_uniform method."""
         up = (bp + 1.0) / 2.0
-        return self.bs_uniform(n, up, keep_rng=keep_rng, inv=inv)
+        return self.bs_uniform(n, up, keep_rng=keep_rng, inv=inv, pack=pack)
 
 bv_int_cache = {}
 def bit_vec_to_int(vec):

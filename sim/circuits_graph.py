@@ -1,5 +1,4 @@
 import numpy as np
-import copy
 import graphviz
 from functools import reduce
 from enum import IntEnum
@@ -34,8 +33,8 @@ class G_Circuit():
         self.k = k
         self.connected_n = 0
         self.connected_k = 0
-        self.fwd_edges = []
-        self.back_edges = []
+        self.fwd_edges = {}
+        self.back_edges = {}
         self.nodes = []
         self.node_cnt = 0
         self.visit_state = VState.UNVISITED
@@ -43,13 +42,36 @@ class G_Circuit():
         self.name = name
         self.ptm = None
 
-        self.subgraph_idx = None #metadata for extracting subgraphs
-
     def add_node(self, node):
         self.nodes.append(node)
-        self.fwd_edges.append([]) #Edges leaving this node
-        self.back_edges.append([]) #Edges entering this node
+        self.fwd_edges[node] = [] #Edges leaving this node
+        self.back_edges[node] = [] #Edges entering this node
         self.node_cnt += 1
+
+    #def remove_node(self, node):
+    #    node_idx = self.nodes.index(node)
+    #    del self.nodes[node_idx]
+    #    del self.fwd_edges[node_idx]
+    #    del self.back_edges[node_idx]
+    #    for fwd_list in self.fwd_edges:
+    #        for fwd_edge in fwd_list:
+    #            if fwd_edge.dest == None:
+    #                continue
+    #            if fwd_edge.dest == node_idx:
+    #                fwd_edge.dest = None
+    #                #self.nodes[fwd_edge.src].connected_k -= 1
+    #            elif fwd_edge.dest > node_idx:
+    #                fwd_edge.dest -= 1
+    #    for back_list in self.back_edges:
+    #        for back_edge in back_list:
+    #            if back_edge.src == None:
+    #                continue
+    #            if back_edge.src == node_idx:
+    #                back_edge.src = None
+    #                #self.nodes[back_edge.dest].connected_n -= 1
+    #            elif back_edge.src > node_idx:
+    #                back_edge.src -= 1
+    #    self.node_cnt -= 1
 
     def add_edge(self, src, src_out, dest, dest_in):
         if src >= self.node_cnt or dest >= self.node_cnt:
@@ -58,9 +80,11 @@ class G_Circuit():
         if src_out >= self.nodes[src].k or dest_in >= self.nodes[dest].n:
             raise ValueError("Cannot add edge - Invalid src_out or dest_in index")
 
-        E = Edge(src, dest, src_out, dest_in)
-        self.fwd_edges[src].append(E)
-        self.back_edges[dest].append(E)
+        src_node = self.nodes[src]
+        dest_node = self.nodes[dest]
+        E = Edge(src_node, dest_node, src_out, dest_in)
+        self.fwd_edges[src_node].append(E)
+        self.back_edges[dest_node].append(E)
         self.nodes[src].connected_k += 1
         self.nodes[dest].connected_n += 1
 
@@ -70,40 +94,38 @@ class G_Circuit():
             fillcolor = colors[int(node.visit_state)]
             g.node(str(idx) + " {}".format(node.name), style='filled', fillcolor=fillcolor)
 
-        for edge_list in self.fwd_edges:
-            for edge in edge_list:
-                edgecolor = colors[int(edge.visit_state)]
-                g.edge(str(edge.src) + " {}".format(self.nodes[edge.src].name), \
-                    str(edge.dest) + " {}".format(self.nodes[edge.dest].name), color=edgecolor)
+        for edge in self.get_edges():
+            edgecolor = colors[int(edge.visit_state)]
+            g.edge(str(self.nodes.index(edge.src)) + " {}".format(edge.src.name), \
+                str(self.nodes.index(edge.dest)) + " {}".format(edge.dest.name), color=edgecolor)
         g.view()
 
     def get_input_nodes(self):
         """Return a list of indices for all nodes in this graph that are input nodes"""
         inputs = []
-        for idx, node in enumerate(self.nodes):
+        for node in self.nodes:
             if isinstance(node, G_Circuit_IN):
-                inputs.append(idx)
+                inputs.append(node)
         assert len(inputs) == self.n
         return inputs
 
     def add_input(self, val, idx):
         assert not self.has_all_inputs()
-        input_idx = self.get_input_nodes()[idx]
-        input_node = self.nodes[input_idx]
+        input_node = self.get_input_nodes()[idx]
         input_node.add_input(val, 0)
     
     def get_output_nodes(self):
         """Return a list of indices for all nodes in this graph that are output nodes"""
         outputs = []
-        for idx, node in enumerate(self.nodes):
+        for node in self.nodes:
             if isinstance(node, G_Circuit_OUT):
-                outputs.append(idx)
+                outputs.append(node)
         assert len(outputs) == self.k
         return outputs
 
     def get_edges(self):
         e = []
-        for outs in self.fwd_edges:
+        for outs in self.fwd_edges.values():
             e += outs
         return e
 
@@ -115,6 +137,12 @@ class G_Circuit():
                 return False
             if node.connected_k != node.k:
                 return False
+        inputs = self.get_input_nodes()
+        if len(inputs) != self.n:
+            return False
+        outputs = self.get_output_nodes()
+        if len(outputs) != self.k:
+            return False
         return True
 
     def is_flat(self):
@@ -126,8 +154,7 @@ class G_Circuit():
 
     def has_all_inputs(self):
         """Checks that all input nodes to this circuit have values assigned to them"""
-        for input_idx in self.get_input_nodes():
-            input_node = self.nodes[input_idx]
+        for input_node in self.get_input_nodes():
             if not input_node.has_all_inputs():
                 return False
         return True
@@ -147,23 +174,20 @@ class G_Circuit():
 
         queue = self.get_input_nodes()
         while queue != []:
-            node_idx = queue.pop(0)
-            node = self.nodes[node_idx]
+            node = queue.pop(0)
             node_outs = node.eval()
 
-            for edge in self.fwd_edges[node_idx]:
-                dest_idx = edge.dest
-                dest_node = self.nodes[dest_idx]
-                if type(node_outs) == np.ndarray: 
+            for edge in self.fwd_edges[node]:
+                dest_node = edge.dest
+                if type(node_outs) == np.ndarray:
                     val = node_outs[edge.src_out]
                 else:
                     val = node_outs
                 dest_node.add_input(val, edge.dest_in)
                 if not isinstance(dest_node, G_Circuit_OUT) and dest_node.has_all_inputs():
-                    queue.append(dest_idx)
+                    queue.append(dest_node)
         outs = []
-        for output_idx in self.get_output_nodes():
-            output_node = self.nodes[output_idx]
+        for output_node in self.get_output_nodes():
             assert output_node.has_all_inputs()
             outs.append(output_node.eval())
         return np.array(outs)
@@ -172,67 +196,59 @@ class G_Circuit():
         """Forward pass of the sub-circuit PTM optimization algorithm from the wk_5_11_22 slides"""
 
         #Identify the subgraph 
-        input_idxs = self.get_input_nodes()
-        queue = [input_idxs[i] for i in selected_inputs]
+        input_nodes = self.get_input_nodes()
+        queue = [input_nodes[i] for i in selected_inputs]
         found_edges = [] #May be unnecessary
         while queue != []:
-            node_idx = queue.pop(0)
-            node = self.nodes[node_idx]
+            node = queue.pop(0)
             node.visit_state = VState.FWD_VISIT
-            for edge in self.fwd_edges[node_idx]:
+            for edge in self.fwd_edges[node]:
                 edge.visit_state = VState.FWD_VISIT
                 found_edges.append(edge) #May need to copy edge instance
-                dest_idx = edge.dest
-                for incoming_edge in self.back_edges[dest_idx]:
+                dest_node = edge.dest
+                for incoming_edge in self.back_edges[dest_node]:
                     if incoming_edge.visit_state != VState.FWD_VISIT:
                         break
                 else:
-                    queue.append(dest_idx)
+                    queue.append(dest_node)
 
         #Get the new endpoint edges
         endpoints = []
         for edge in found_edges:
-            dest_node = self.nodes[edge.dest]
+            dest_node = edge.dest
             if dest_node.visit_state != VState.FWD_VISIT or \
-            isinstance(self.nodes[edge.dest], G_Circuit_OUT):
+            isinstance(dest_node, G_Circuit_OUT):
                 endpoints.append(edge)
         return endpoints
+
 
     def back_logic_cone_phase1(self, selected_edges, n):
         """Backward pass of the sub-circuit PTM optimization algorithm from the wk_5_11_22 slides"""
         G2 = G_Circuit(n, 2)
-        G2.add_node(G_Circuit_OUT())
-        G2.add_node(G_Circuit_OUT())
         new_edges = []
         queue = []
-        subgraph_idx = 2
-        for idx, edge in enumerate(selected_edges):
-            src_node = self.nodes[edge.src]
+        for edge in selected_edges:
+            out_node = G_Circuit_OUT()
+            G2.add_node(out_node)
+            src_node = edge.src
             if src_node.visit_state == VState.FWD_VISIT:
-                queue.append(edge.src)
-                src_node.subgraph_idx = subgraph_idx
-                subgraph_idx += 1
-                new_edges.append(Edge(src_node.subgraph_idx, idx, edge.src_out, 0))
+                queue.append(src_node)
+                new_edges.append(Edge(src_node, out_node, edge.src_out, 0))
                 edge.visit_state = VState.BACK_VISIT_1
 
         #Find the relevant nodes/edges
         while queue != []:
-            node_idx = queue.pop(0)
-            node = self.nodes[node_idx]
+            node = queue.pop(0)
             G2.add_node(node)
             node.visit_state = VState.BACK_VISIT_1
-            for edge in self.back_edges[node_idx]:
+            for edge in self.back_edges[node]:
                 if edge.visit_state == VState.FWD_VISIT:
-                    src_node = self.nodes[edge.src]
+                    src_node = edge.src
                     if src_node.visit_state == VState.FWD_VISIT:
-                        queue.append(edge.src)
-                        src_node.subgraph_idx = subgraph_idx
-                        subgraph_idx += 1
-                    assert src_node.subgraph_idx != None
-                    assert node.subgraph_idx != None
-                    new_edges.append(Edge(src_node.subgraph_idx, node.subgraph_idx, edge.src_out, edge.dest_in))
+                        queue.append(src_node)
+                    new_edges.append(Edge(src_node, node, edge.src_out, edge.dest_in))
                     edge.visit_state = VState.BACK_VISIT_1
-        for edge in new_edges:
+        for edge in new_edges: #TODO: Might be able to just do G2.add_edge instead of new_edges.append(Edge ...) 
             G2.add_edge(edge.src, edge.src_out, edge.dest, edge.dest_in)
         for edge_list in G2.fwd_edges:
             for edge in edge_list:
@@ -247,59 +263,57 @@ class G_Circuit():
             edge.visit_state = VState.BACK_VISIT_2
             queue.append(edge.src)
         while queue != []:
-            node_idx = queue.pop(0)
-            node = self.nodes[node_idx]
+            node = queue.pop(0)
             if node.visit_state == VState.FWD_VISIT:
                 node.visit_state = VState.BACK_VISIT_2
             elif not isinstance(node, G_Circuit_IN):
                 node.visit_state = VState.DUPLICATE
 
-            for edge in self.back_edges[node_idx]:
+            for edge in self.back_edges[node]:
                 if edge.visit_state == VState.FWD_VISIT:
                     edge.visit_state = VState.BACK_VISIT_2
                 else:
                     edge.visit_state = VState.DUPLICATE
                 queue.append(edge.src)
 
-    def get_flattened(self):
+    def flatten(self):
         """Convert to a graph representing the connections between primitive nodes only, no sub-circuits"""
-        new_graph = copy.deepcopy(self)
         if self.is_flat():
-            return new_graph
+            return
         
         #identify nodes to flatten
         to_flatten = []
-        to_flatten_idx = []
-        to_keep = []
-        for idx, node in enumerate(self.nodes):
-            if node.primitive:
-                to_keep.append(node)
-            else:
+        for node in self.nodes:
+            if not node.primitive:
                 to_flatten.append(node)
-                to_flatten_idx.append(idx)
 
-        for (idx, node) in zip(to_flatten_idx, to_flatten):
-            node = node.get_flattened() #Recursive call
-            offset = len(new_graph.nodes)
+        #Remove all nodes required to be flattened
+        for node in to_flatten:
+            self.remove_node(node)
+
+        for node in to_flatten:
+            node.flatten() #Recursive call
+            offset = len(self.nodes)
 
             #insert new nodes
             for sub_node in node.nodes:
-                new_graph.add_node(sub_node)
+                self.add_node(sub_node)
 
-            #break edges that cross the sub-circuit boundary
-            for edge in list(new_graph.back_edges[idx]):
-                new_graph.add_edge(edge.src, edge.src_out, offset + edge.dest_in, 0)
-                new_graph.fwd_edges[edge.src].remove(edge)
-                new_graph.back_edges[edge.dest].remove(edge)
-            for edge in list(new_graph.fwd_edges[idx]):
-                new_graph.add_edge(offset + edge.dest_in, 0, edge.dest, edge.dest_in)
-                new_graph.fwd_edges[edge.src].remove(edge)
-                new_graph.back_edges[edge.dest].remove(edge)
-
-            #add new edges
+            #insert new edges
             for sub_edge in node.get_edges():
-                new_graph.add_edge(sub_edge.src + offset, sub_edge.src_out, sub_edge.dest + offset, sub_edge.dest_in)
-        return new_graph
+                self.add_edge(sub_edge.src + offset, sub_edge.src_out, sub_edge.dest + offset, sub_edge.dest_in)
+
+            #reconnect to the existing edges
+            for fwd_list in self.fwd_edges:
+                for edge in fwd_list:
+                    if edge.dest == None:
+                        edge.dest = offset + edge.dest_in
+                        edge.dest_in = 0
+            for back_list in self.back_edges:
+                for edge in back_list:
+                    if edge.src == None:
+                        edge.src = offset + (len(node.nodes) - node.k) + edge.src_out
+                        edge.src_out = 0
 
     def get_ptm(self):
         if self.ptm is not None:
@@ -326,7 +340,7 @@ class G_Circuit():
         #            par = reduce(np.kron, par_ptms)
         #            dest_node.ptm = par @ dest_node.get_ptm()
         #            queue.append(dest_idx)
-        #self.ptm = reduce(np.kron, [self.nodes[out].ptm for out in self.get_output_nodes()])
+        #self.ptm = reduce(np.kron, [out.ptm for out in self.get_output_nodes()])
 
         def eval_wrapper(*args):
             return self.eval(*args)

@@ -90,9 +90,14 @@ def test_CONST_VAL_sim():
     for val in all_4_precision_consts:
         cir = CONST_VAL(val, precision, bipolar=False)
         const_bs = rng.bs_lfsr_p5_consts(N, cir.actual_precision, lfsr_sz, add_zero_state=True)
+        const_bs_unpacked = rng.bs_lfsr_p5_consts(N, cir.actual_precision, lfsr_sz, add_zero_state=True, pack=False)
+        ptm = cir.ptm()
         z = cir.eval(*list(const_bs))
+        z2 = apply_ptm_to_bs(const_bs_unpacked, ptm)
         result = bs.bs_mean(z, bs_len=N)
+        result2 = bs.bs_mean(z2, bs_len=N)
         print("Result: {}, Correct: {}".format(result, result == val))
+        print("Result2: {}, Correct: {}".format(result2, result2 == val))
 
 def test_PARALLEL_CONST_sim():
     rng = bs.SC_RNG()

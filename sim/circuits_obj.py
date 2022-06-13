@@ -274,7 +274,8 @@ class PARALLEL_CONST(SeriesCircuit):
     def _parallel_consts(self, consts, precision, bipolar=True):
         """Old init function, from before the ability to reuse SNGs was added"""
         const_vals = [CONST_VAL(const, precision, bipolar=bipolar) for const in reversed(consts)]
-        precisions = [x.actual_precision for x in const_vals]
+        precisions = [x.actual_precision for x in reversed(const_vals)]
+        #precisions = [x.actual_precision for x in const_vals] #?
         self.actual_precision = max(precisions)
         sp = sum(precisions)
         mappings = []
@@ -285,6 +286,48 @@ class PARALLEL_CONST(SeriesCircuit):
             ParallelCircuit(const_vals)
         ]
         return layers
+
+class PARALLEL_CONST_MUL(SeriesCircuit):
+    def __init__(self, consts, precision, bipolar=True):
+        width = len(consts)
+        mappings = []
+        for i in range(width):
+            mappings.append(i)
+            mappings.append(i+width)
+        if bipolar:
+            mul_layer = ParallelCircuit([SeriesCircuit([XOR(), NOT()]) for _ in range(width)])
+        else:
+            mul_layer = ParallelCircuit([AND() for _ in range(width)])
+        parallel_const = PARALLEL_CONST(consts, precision, bipolar=bipolar)
+        layers = [
+            ParallelCircuit([parallel_const, I(width)]),
+            BUS(2*width, 2*width, mappings),
+            mul_layer
+        ]
+        self.actual_precision = parallel_const.actual_precision
+        super().__init__(layers)
+
+class PARALLEL_MAC_2(SeriesCircuit):
+    def __init__(self, consts, precision, bipolar=True, maj=False):
+        assert len(consts) == 4
+        const_mul = PARALLEL_CONST_MUL(consts, precision, bipolar=bipolar)
+        layers = [
+            ParallelCircuit([I(1, nc=1), const_mul]),
+            PARALLEL_ADD(2, maj=maj)
+        ]
+        self.actual_precision = const_mul.actual_precision
+        super().__init__(layers)
+
+class PARALLEL_MAC_TREE_2(SeriesCircuit):
+    def __init__(self, consts, precision, bipolar=True, maj=False):
+        assert len(consts) == 4
+        pmac = PARALLEL_MAC_2(consts, precision, bipolar=bipolar, maj=maj)
+        layers = [
+            ParallelCircuit([I(1, nc=1), pmac]),
+            MUX()
+        ]
+        self.actual_precision = pmac.actual_precision
+        super().__init__(layers)
 
 class MAC_RELU(SeriesCircuit):
     """Positive/negative MAC + RELU
