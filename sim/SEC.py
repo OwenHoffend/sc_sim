@@ -86,13 +86,15 @@ def opt_K_max(K):
     K_sum = np.sum(K, axis=1)
     return np.stack([np.pad(np.ones(t, dtype=np.bool_), (0, tlen-t), 'constant') for t in K_sum])
 
+def get_all_opt_K_max(K):
+    """Rotate through all possible variants of optimal circuit"""
+    opt = opt_K_max(K)
+    for i in range(opt.shape[1]):
+        yield np.roll(opt, i, axis=1)
+
 def opt_K_min(K):
     K_max = opt_K_max(K)
     return np.flip(K_max, axis=1)
-
-def opt_K_zero(K1, K2):
-    K1_max = opt_K_max(K1)
-    K2_max = opt_K_max(K2)
 
 def Ks_to_Mf(Ks):
     nc, nv = np.log2(Ks[0].shape)

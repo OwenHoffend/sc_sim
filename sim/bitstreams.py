@@ -201,7 +201,7 @@ def bs_scc(bsx, bsy, bs_len=None):
     py = bs_mean(bsy, bs_len=bs_len)
     if px in (0, 1) or py in (0, 1):
         #raise ValueError("SCC is undefined for bitstreams with value 0 or 1") 
-        return None
+        return 1
     p_uncorr  = px * py
     p_actual  = bs_mean(np.bitwise_and(bsx, bsy), bs_len=bs_len)
     if p_actual > p_uncorr:
