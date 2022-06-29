@@ -2,6 +2,7 @@ from sim.circuits_obj import *
 from sim.SEC import *
 from sim.PTM import B_mat
 import sim.bitstreams as bs
+from sim.espresso import espresso_get_SOP_area
 
 all_4_precision_consts = [
     0.5, 0.25, 0.75, 0.125, 0.625, 0.375, 0.875, 0.0625, 0.5625, 0.3125, 0.8125, 0.1875, 0.6875, 0.4375, 0.9375
@@ -43,6 +44,87 @@ def test_sim_AND():
     X = rng.bs_lfsr(N, px, keep_rng=False)
     Y = rng.bs_lfsr(N, py, keep_rng=False)
     print(bs.bs_mean(cir.eval(X, Y), bs_len=N))
+
+def test_PCC():
+    n = 4
+    cir = PCC(n)
+    ptm = cir.ptm()
+    ptm_opt = Ks_to_Mf([opt_K_max(get_K(cir)), ])
+    rs = np.array([1.0/(2**n) for _ in range(2 ** n)]) #ptv for lfsr (constant) inputs to pcc
+
+    for x in range(2 ** n):
+        xs = np.array([1.0 if i == x else 0.0 for i in range(2 ** n)])
+        vin = np.kron(rs, xs)
+        vout = ptm.T @ vin
+        vout_opt = ptm_opt.T @ vin
+        print(vout)
+        print(vout_opt)
+
+def test_parallel_PCC():
+    """Tests relating to SCC before/after correlation opt on a pair of PCCs"""
+    n = 2
+    cir = PCC_2(n)
+    ptm = cir.ptm()
+    K1, K2 = get_K_2outputs(cir)
+    K1_opt1, K2_opt1 = opt_K_max(K1), opt_K_max(K2)
+    K2_opt_n1 = opt_K_min(K2)
+    K1_opt0, K2_opt0 = opt_K_zero(K1, K2)
+    #min_area = espresso_get_SOP_area(Ks_to_Mf([K1_opt0, K2_opt0]), 'test.in')
+    #r1 = list(get_all_rolled(K1_opt0))
+    #r2 = list(get_all_rolled(K2_opt0))
+    #for i in range(len(r1)):
+    #    k10 = r1[i]
+    #    k20 = r2[i]
+    #    new_area = espresso_get_SOP_area(Ks_to_Mf([k10, k20]), 'test.in')
+    #    if new_area < min_area:
+    #        min_area = new_area
+    #        K1_opt0 = k10
+    #        K2_opt0 = k20
+    #print(espresso_get_SOP_area(Ks_to_Mf([K1_opt0, K2_opt0]), 'test.in', do_print=True))
+
+    ptm_opt1 = Ks_to_Mf([K1_opt1, K2_opt1])
+    ptm_opt_n1 = Ks_to_Mf([K1_opt1, K2_opt_n1])
+    ptm_opt0 = Ks_to_Mf([K1_opt0, K2_opt0])
+    B2 = B_mat(2)
+    rs = np.array([1.0/(2**n) for _ in range(2 ** n)]) #ptv for lfsr (constant) inputs to pcc
+    unopt_sccs = []
+    opt1_sccs = []
+    opt_n1_sccs = []
+    opt0_sccs = []
+    for x in range(1, 2 ** n):
+        xs = np.array([1.0 if i == x else 0.0 for i in range(2 ** n)])
+        for y in range(1, 2 ** n):
+            ys = np.array([1.0 if i == y else 0.0 for i in range(2 ** n)])
+            vin = reduce(np.kron, [rs, ys, xs])
+            vout = ptm.T @ vin
+            vout_opt1 = ptm_opt1.T @ vin
+            pout = B2.T @ vout
+            pout_opt1 = B2.T @ vout_opt1
+            vout_opt_n1 = ptm_opt_n1.T @ vin
+            pout_opt_n1 = B2.T @ vout_opt_n1
+            vout_opt0 = ptm_opt0.T @ vin
+            pout_opt0 = B2.T @ vout_opt0
+            print(pout)
+            #print(pout_opt1)
+            assert np.all(pout == pout_opt1)
+            assert np.all(pout == pout_opt_n1)
+            assert np.all(pout == pout_opt0)
+            unopt_sccs.append(get_corr_mat_paper(vout)[0,1])
+            opt1_sccs.append(get_corr_mat_paper(vout_opt1)[0,1])
+            opt_n1_sccs.append(get_corr_mat_paper(vout_opt_n1)[0,1])
+            opt0_sccs.append(get_corr_mat_paper(vout_opt0)[0,1])
+
+    print(np.mean(unopt_sccs))
+    print(np.mean(opt1_sccs))
+    print(np.mean(opt_n1_sccs))
+    print(np.mean(opt0_sccs))
+
+    print(espresso_get_SOP_area(Ks_to_Mf([K1]), 'test.in', do_print=True))
+    print(espresso_get_SOP_area(Ks_to_Mf([K1_opt1]), 'test.in', do_print=True))
+    print(espresso_get_SOP_area(Ks_to_Mf([K2_opt1]), 'test.in', do_print=True))
+    print(espresso_get_SOP_area(Ks_to_Mf([K2_opt_n1]), 'test.in', do_print=True))
+    print(espresso_get_SOP_area(Ks_to_Mf([K2_opt0]), 'test.in', do_print=True))
+    print('hi')
 
 def test_all_const_VALs():
     for v in CONST_VAL.all_const_vals(4):

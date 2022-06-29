@@ -20,14 +20,15 @@ def PTM_to_espresso_input(ptm, fn, inames=None, onames=None):
             f.write(instr + " " + outstr + "\n")
         f.write(".e")
 
-def espresso_get_SOP_area(ptm, fn, inames=None, onames=None):
+def espresso_get_SOP_area(ptm, fn, inames=None, onames=None, do_print=False):
     PTM_to_espresso_input(ptm, fn, inames=inames, onames=onames)
     p = subprocess.Popen("./Espresso {}".format(fn), stdout=subprocess.PIPE)
     (output, err) = p.communicate()
     p_status = p.wait()
     cost = 0
     for line in output.decode('utf-8').split('\n'):
-        print(line)
+        if do_print:
+            print(line)
         if not line.startswith('.'):
             line_ = line.split(' ')[0]
             cost += line_.count('1')

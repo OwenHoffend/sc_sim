@@ -86,15 +86,64 @@ def opt_K_max(K):
     K_sum = np.sum(K, axis=1)
     return np.stack([np.pad(np.ones(t, dtype=np.bool_), (0, tlen-t), 'constant') for t in K_sum])
 
-def get_all_opt_K_max(K):
-    """Rotate through all possible variants of optimal circuit"""
-    opt = opt_K_max(K)
-    for i in range(opt.shape[1]):
-        yield np.roll(opt, i, axis=1)
-
 def opt_K_min(K):
     K_max = opt_K_max(K)
     return np.flip(K_max, axis=1)
+
+def opt_K_zero(K1, K2):
+    K1_opt = opt_K_max(K1)
+    K2_opt = opt_K_min(K2)
+    w1 = np.sum(K1, axis=1)
+    w2 = np.sum(K2, axis=1)
+
+    nv2, nc2 = K1.shape
+    novs = np.round((w1*w2)/nc2).astype(np.int32)
+
+    K2_0 = np.zeros_like(K2)
+    for i in range(nv2):
+        K2_0[i, :] = K2_opt[i, :]
+        nov = novs[i]
+        while np.sum(K1_opt[i, :] & K2_0[i, :]) < nov:
+            K2_0[i, :] = np.roll(K2_0[i, :], 1)
+        
+        #w = w2[i]
+        #placed = 0
+        #for j in range(nc2):
+        #    other = K1_opt[i, j]
+        #    if other:
+        #        if placed < nov:
+        #            K2_0[i, j] = True
+        #            placed += 1
+        #        else:
+        #            K2_0[i, j] = False
+        #    elif placed < w:
+        #        K2_0[i, j] = True
+        #        placed += 1
+        #    else:
+        #        K2_0[i, j] = False
+
+    return K1_opt, K2_0
+
+def get_all_rolled(K):
+    """Rotate through all possible variants of optimal circuit"""
+    #opt = opt_K_max(K)
+    for i in range(K.shape[1]):
+        yield np.roll(K, i, axis=1)
+
+#def get_all_rolled(K):
+#    """Rotate through all possible variants of optimal circuit"""
+#    opt = opt_K_max(K)
+#    for i in range(opt.shape[1]):
+#        yield np.roll(opt, i, axis=1)
+
+def get_num_in_SEC(K):
+    """Use the equation from the SEC paper to get the number of equivalent circuits for a given K matrix"""
+    pass
+
+def get_all_in_SEC(K):
+    """Yield all possible circuits equivalent to the given K matrix"""
+    pass
+
 
 def Ks_to_Mf(Ks):
     nc, nv = np.log2(Ks[0].shape)
@@ -115,6 +164,12 @@ def get_K_2outputs(cir, o1_idx=0, o2_idx=1):
     K1 = A[:, o1_idx].reshape(2**cir.nc, 2**cir.nv).T
     K2 = A[:, o2_idx].reshape(2**cir.nc, 2**cir.nv).T
     return K1, K2
+
+def get_K(cir, o1_idx=0):
+    Mf = cir.ptm()
+    A = Mf @ B_mat(cir.k) #2**(nc+nv) x k
+    K1 = A[:, o1_idx].reshape(2**cir.nc, 2**cir.nv).T
+    return K1
 
 def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
     #Directly compute a circuit design that maximizes the output correlation between two outputs

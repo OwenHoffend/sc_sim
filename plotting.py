@@ -5,8 +5,19 @@ import numpy as np
 import cv.img_io as img_io
 from cv.conv_filters import ConvFilters as cf
 import sim.bitstreams as bs
-import sim.scc_sat as ss
+from sim.SEC import *
+
+#import sim.scc_sat as ss
 import sim.circuits as cir
+
+def plot_random():
+    """Misc plotting"""
+    plt.bar("mux", 0.66, width=0.4, yerr=0.15)
+    plt.bar("maj", 0.84, width=0.4, yerr=0.07)
+    plt.bar("opt", 0.88, width=0.4, yerr=0.03)
+    plt.xlabel("Circuit")
+    plt.ylabel("Avg SCC")
+    plt.show()
 
 def plot_img_conv_mse(img_path):
     """Plot the error due to converting to SC bitstreams and back
@@ -264,14 +275,14 @@ def plot_alignments(Nx, Ny, N):
             break
         basey = np.roll(basey, -1)
 
-    x = list(range(len(results_zscc)))
-    plt.plot(x, results_scc, marker='o', label="SCC")
-    plt.plot(x, results_zce, marker='o', label="ZCE")
-    plt.plot(x, results_zscc, marker='o', label="ZSCC")
+    x = np.array(list(range(len(results_zscc))))/N
+    plt.plot(x, results_scc, label="SCC")
+    #plt.plot(x, results_zce, marker='o', label="ZCE")
+    #plt.plot(x, results_zscc, marker='o', label="ZSCC")
     plt.legend()
-    plt.xlabel("Alignments")
-    plt.ylabel("Correlation Value")
-    plt.title("SCC, ZCE, and ZSCC for all Px=21/32 and Py=22/32")
+    plt.xlabel("Proability of Overlap: Px = 0.7, Py = 0.3")
+    plt.ylabel("SCC Value")
+    plt.title("SCC vs Probability of Overlap for Px = 0.7, Py = 0.3")
     plt.grid()
     plt.show()
 
@@ -316,8 +327,11 @@ if __name__ == "__main__":
     #plot_num_scc_combs([16, 24, 32])
     #scc_in_vs_out(20, np.array([0.2, 0.2, 0.1]), np.array([0.2, 0.2, 0.2]), np.bitwise_and, "AND Gate") 
 
-    #plot_alignments(21, 22, 32)
-    #plot_alignments(1, 4, 6)
+    N=100
+    px = 0.7
+    py = 0.3
+    plot_alignments(N*px, N*py, 100)
+    #plot_alignments(7, 8, 10)
 
     """Correlation preservation analysis"""
     #p_arr = [np.random.random() for _ in range(9)]

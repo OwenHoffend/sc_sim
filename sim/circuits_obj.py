@@ -252,6 +252,42 @@ class CONST_VAL(SeriesCircuit):
             yield val
             val += inc
 
+class PCC(SeriesCircuit):
+    """Generate an n-bit PCC, where the variable inputs are either 0 or 1, and the constant inputs come from LFSR"""
+    def __init__(self, n):
+        mappings = []
+        for i in range(n):
+            mappings.append(i) #Variable inputs
+            mappings.append(i+n) #Constant inputs
+        layers = [
+            BUS(2*n, 2*n, mappings, nc = n), 
+            ParallelCircuit([I(2*n-2), AND()])
+        ]
+        remaining = 2*n-2
+        for i in range(n-2):
+            remaining -= 2
+            layers.append(ParallelCircuit([I(remaining), MUX()]))
+        layers.append(MUX())
+        super().__init__(layers)
+
+class PCC_2(SeriesCircuit):
+    "Pair of PCCs for testing SCC"
+    def __init__(self, n):
+        mappings = []
+        for i in range(n):
+            mappings.append(i)
+        for i in range(n):
+            mappings.append(i+2*n)
+        for i in range(n):
+            mappings.append(i+n)
+        for i in range(n):
+            mappings.append(i+2*n)
+        layers = [
+            BUS(3*n, 4*n, mappings, nc = n),
+            ParallelCircuit([PCC(n), PCC(n)])
+        ]
+        super().__init__(layers)
+
 class PARALLEL_CONST(SeriesCircuit):
     """Generate a set of parallel constant generators
         reuse: When True, the class will only generate one SNG for each unique constant

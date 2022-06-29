@@ -41,7 +41,7 @@ def test_SEC_opt_2x2_kernel(imgs):
     N = 2 ** lfsr_sz
     precision = 4
     num_repeats = 1 #Number of times to run the same kernel
-    kernel = [0.875, 0.875, 0.125, 0.125] #is about the same (no need for improvement)
+    #kernel = [0.875, 0.875, 0.125, 0.125] #is about the same (no need for improvement)
     #kernel = [0.125, 0.875, 0.875, 0.125] #shows improvement
     #kernel = [0.0625, 0.9375, 0.9375, 0.0625] #Shows improvement
     pack = False

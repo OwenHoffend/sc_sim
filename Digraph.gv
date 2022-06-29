@@ -1,0 +1,9 @@
+digraph {
+	"0 AND" [fillcolor="#3990e6" style=filled]
+	"1 IN" [fillcolor="#3990e6" style=filled]
+	"2 IN" [fillcolor="#3990e6" style=filled]
+	"3 NOT" [fillcolor="#3990e6" style=filled]
+	"1 IN" -> "3 NOT" [color=gray]
+	"2 IN" -> "0 AND" [color=gray]
+	"3 NOT" -> "0 AND" [color=gray]
+}

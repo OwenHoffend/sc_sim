@@ -72,7 +72,8 @@ def test_espresso():
     print("Original cost " + str(original_cost) + "\n\n")
     costs = []
     min_cost = None
-    for (K_opt1, K_opt2) in zip(get_all_opt_K_max(K1), get_all_opt_K_max(K2)):
+    K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
+    for (K_opt1, K_opt2) in zip(get_all_rolled(K1_opt), get_all_rolled(K2_opt)):
         ptm_opt = Ks_to_Mf([K_opt1, K_opt2])
         cost = espresso_get_SOP_area(ptm_opt, "mux_opt.in")
         if min_cost is None or cost < min_cost:
@@ -86,6 +87,73 @@ def test_espresso():
 
     print(original_cost)
     print(min_cost)
+
+def heatmap(xs, ys, zs, inv_colormap=True):
+    if inv_colormap:
+        cmap = 'RdBu_r'
+    else:
+        cmap = 'RdBu'
+    y, x = np.meshgrid(xs, ys)
+    z_min, z_max = zs.min(), zs.max()
+    fig, ax = plt.subplots()
+    c = ax.pcolormesh(x, y, zs, cmap=cmap, vmin=z_min, vmax=z_max)
+    ax.set_title('pcolormesh')
+    ax.axis([x.min(), x.max(), y.min(), y.max()])
+    fig.colorbar(c, ax=ax)
+
+    plt.show()
+
+def plot_heatmap_SEC_opt_cases():
+    """Roll the top/bottom K matrix to produce a heat map of 2^nc x 2^nc entries. Can compare both area and SCC"""
+    cir = PARALLEL_MAC_2([0.125, 0.875, 0.875, 0.125], 4, bipolar=False)
+    K1, K2 = get_K_2outputs(cir)
+    K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
+    original_area = espresso_get_SOP_area(cir.ptm(), "cir.in")
+    num_opt = 2 ** cir.nc
+    area_costs = np.zeros((num_opt, num_opt))
+    scc_costs = np.zeros((num_opt, num_opt))
+    i,j = 0,0
+    lfsr_sz = 7
+    N = 2 ** lfsr_sz
+    scc_trials = 20
+    #SCC from uniform random inputs
+    sccs = []
+    for _ in range(scc_trials):
+        rng = bs.SC_RNG()
+        x_vals = np.random.uniform(size=4)
+        var_bs = [rng.bs_lfsr(N, x_vals[i], pack=False) for i in range(4)]
+        rng = bs.SC_RNG()
+        const_bs = rng.bs_lfsr_p5_consts(N, cir.actual_precision + 1, lfsr_sz, add_zero_state=True, pack=False)
+        px = np.vstack((var_bs, const_bs))
+        pz = apply_ptm_to_bs(px, cir.ptm())
+        sccs.append(bs_scc(pz[0, :], pz[1, :], bs_len=N))
+    original_scc = np.mean(sccs)
+    for K1_opt_rolled in get_all_rolled(K1_opt):
+        print(i)
+        for K2_opt_rolled in get_all_rolled(K2_opt):
+            opt_ptm = Ks_to_Mf([K1_opt_rolled, K2_opt_rolled])
+            area_costs[i][j] = espresso_get_SOP_area(opt_ptm, "cir_opt.in")
+
+            #SCC from uniform random inputs
+            sccs = []
+            for _ in range(scc_trials):
+                rng = bs.SC_RNG()
+                x_vals = np.random.uniform(size=4)
+                var_bs = [rng.bs_lfsr(N, x_vals[i], pack=False) for i in range(4)]
+                rng = bs.SC_RNG()
+                const_bs = rng.bs_lfsr_p5_consts(N, cir.actual_precision + 1, lfsr_sz, add_zero_state=True, pack=False)
+                px = np.vstack((var_bs, const_bs))
+                pz = apply_ptm_to_bs(px, opt_ptm)
+                sccs.append(bs_scc(pz[0, :], pz[1, :], bs_len=N))
+            scc_costs[i][j] = np.mean(sccs)
+            j+=1
+        j=0
+        i+=1
+    xs = list(range(num_opt))
+    ys = list(range(num_opt))
+    heatmap(xs, ys, area_costs/original_area)
+    heatmap(xs, ys, scc_costs, inv_colormap=False)
+    heatmap(xs, ys, (original_area/area_costs)*((scc_costs+1)/(original_scc+1)), inv_colormap=False)
 
 def test_parallel_MAC_SEC_plots():
     #For a given precision, find all of the possible parallel MAC circuits and compute the number of overlaps
