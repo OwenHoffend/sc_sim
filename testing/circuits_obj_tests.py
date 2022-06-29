@@ -62,7 +62,7 @@ def test_PCC():
 
 def test_parallel_PCC():
     """Tests relating to SCC before/after correlation opt on a pair of PCCs"""
-    n = 2
+    n = 4
     cir = PCC_2(n)
     ptm = cir.ptm()
     K1, K2 = get_K_2outputs(cir)
