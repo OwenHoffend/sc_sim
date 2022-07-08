@@ -4,6 +4,8 @@ from sim.PTM import B_mat
 import sim.bitstreams as bs
 from sim.espresso import espresso_get_SOP_area
 
+import matplotlib.pyplot as plt
+
 all_4_precision_consts = [
     0.5, 0.25, 0.75, 0.125, 0.625, 0.375, 0.875, 0.0625, 0.5625, 0.3125, 0.8125, 0.1875, 0.6875, 0.4375, 0.9375
 ]
@@ -63,7 +65,7 @@ def test_PCC():
 def test_parallel_PCC():
     """Tests relating to SCC before/after correlation opt on a pair of PCCs"""
     n = 4
-    cir = PCC_2(n)
+    cir = PCC_k(n, 2)
     ptm = cir.ptm()
     K1, K2 = get_K_2outputs(cir)
     K1_opt1, K2_opt1 = opt_K_max(K1), opt_K_max(K2)
@@ -125,6 +127,154 @@ def test_parallel_PCC():
     print(espresso_get_SOP_area(Ks_to_Mf([K2_opt_n1]), 'test.in', do_print=True))
     print(espresso_get_SOP_area(Ks_to_Mf([K2_opt0]), 'test.in', do_print=True))
     print('hi')
+
+def test_logic_reduce():
+    cir = LOGIC_REDUCE(2, AND)
+    print(cir.ptm())
+
+def test_img_seg_circ():
+    """Very specific image segmentation circuit from wk_7_7_22 slides"""
+    n = 3 #LFSR precision
+    k = 3 #Number of "image pixels" being used
+
+    ##CREATAE THE CIRCUIT
+    #Comparators
+    comps = PCC_k(n, k, use_maj=True)
+
+    #Minmax
+    center = np.floor(k / 2).astype(np.int)
+    mappings = 2*[x for x in range(k)] + [center]
+    mm_bus = BUS(k, 2*k+1, mappings) 
+    mm = ParallelCircuit([I(1), LOGIC_REDUCE(k, OR), LOGIC_REDUCE(k, AND)])
+    mm_xor = ParallelCircuit([I(1), XOR()])
+    mm_out = SeriesCircuit([mm_bus, mm, mm_xor])
+
+    #NOT gate
+    nt = ParallelCircuit([NOT(), I(1)])
+
+    #Output
+    cir = SeriesCircuit([comps, mm_out, nt])
+    ptm = cir.ptm()
+    print(espresso_get_SOP_area(ptm, 'test.in'))
+
+    #0.5 ish correlation, bad area
+    K1, K2 = get_K_2outputs(cir)
+    #print("Number in SEC K1: ", get_num_in_SEC(K1))
+    #print("Number in SEC K2: ", get_num_in_SEC(K2))
+    K1_opt, K2_opt = opt_K_zero(K1, K2)
+    ptm_opt = Ks_to_Mf([K1_opt, K2_opt])
+    print(espresso_get_SOP_area(ptm_opt, 'test.in'))
+
+    #0.6 correlation, better area
+    K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
+    K2_opt_rolled = np.roll(K2_opt, 1, axis=1)
+    ptm_opt2 = Ks_to_Mf([K1_opt, K2_opt_rolled])
+    print(espresso_get_SOP_area(ptm_opt2, 'test.in'))
+    
+    B2 = B_mat(2)
+
+    ##PERFORM TESTING ON THE CIRCUIT
+    assert k == 3 #This section assumes k = 3, need to rewrite it otherwise
+    rs = np.array([1.0/(2**n) for _ in range(2 ** n)]) #ptv for lfsr (constant) inputs to pcc
+    vals = [x*(2.0 ** -n) for x in range(2 ** n)]
+    unopt_sccs = [] 
+    opt_sccs = []
+    opt_sccs2 = []
+
+    unopt_errs = []
+    opt_errs = []
+    opt2_errs = []
+    for ii, x in enumerate(range(1, 2 ** n)):
+        print(vals[ii+1])
+        xs = np.array([1.0 if i == x else 0.0 for i in range(2 ** n)])
+        for jj, y in enumerate(range(1, 2 ** n)):
+            ys = np.array([1.0 if i == y else 0.0 for i in range(2 ** n)])
+            for kk, z in enumerate(range(1, 2 ** n)):
+                zs = np.array([1.0 if i == z else 0.0 for i in range(2 ** n)])
+                vin = reduce(np.kron, [rs, zs, ys, xs])
+                vout = ptm.T @ vin
+                vout_opt = ptm_opt.T @ vin
+                vout_opt2 = ptm_opt2.T @ vin
+                pout = B2.T @ vout
+                pout_opt = B2.T @ vout_opt
+                pout_opt2 = B2.T @ vout_opt2
+                px = vals[ii+1]
+                py = vals[jj+1] #center
+                pz = vals[kk+1]
+                ps = [px, py, pz]
+                correct = [max(ps) - min(ps), 1-py]
+                assert np.all(np.isclose(pout, correct))
+                assert np.all(np.isclose(pout, pout_opt))
+                assert np.all(np.isclose(pout, pout_opt2))
+                unopt_sccs.append(get_corr_mat_paper(vout)[0,1])
+                opt_sccs.append(get_corr_mat_paper(vout_opt)[0,1])
+                opt_sccs2.append(get_corr_mat_paper(vout_opt2)[0,1])
+
+                #Correlation error
+                and_ptm = AND().ptm().T
+                pout_and = (and_ptm @ vout)[1]
+                pout_opt_and = (and_ptm @ vout_opt)[1]
+                pout_opt2_and = (and_ptm @ vout_opt2)[1]
+                correct_and = correct[0] * correct[1]
+                unopt_errs.append(np.abs(pout_and - correct_and))
+                opt_errs.append(np.abs(pout_opt_and - correct_and))
+                opt2_errs.append(np.abs(pout_opt2_and - correct_and))
+
+    ##RESULTS
+    #SCCs
+    print(np.mean(np.abs(unopt_sccs)))
+    print(np.mean(np.abs(opt_sccs)))
+    print(np.mean(np.abs(opt_sccs2)))
+    print(np.std(np.abs(unopt_sccs)))
+    print(np.std(np.abs(opt_sccs)))
+    print(np.std(np.abs(opt_sccs2)))
+
+    plt.bar("unopt - avg scc", 0.8478, width=0.4, yerr=0.308)
+    plt.bar("opt - avg scc", 0.5386, width=0.4, yerr=0.419)
+    plt.bar("balanced - avg scc", 0.674, width=0.4, yerr=0.387)
+    plt.ylabel("Avg SCC")
+    plt.xlabel("Variant")
+    plt.title("Avg SCC vs. Variant")
+    plt.show()
+
+    #Errs
+    print(np.mean(np.abs(unopt_errs)))
+    print(np.mean(np.abs(opt_errs)))
+    print(np.mean(np.abs(opt2_errs)))
+    print(np.std(np.abs(unopt_errs)))
+    print(np.std(np.abs(opt_errs)))
+    print(np.std(np.abs(opt2_errs)))
+
+    plt.bar("unopt - avg err", 0.091, width=0.4, yerr=0.052)
+    plt.bar("opt - avg err", 0.0355, width=0.4, yerr=0.021)
+    plt.bar("balanced - avg err", 0.067, width=0.4, yerr=0.047)
+    plt.ylabel("Avg Abs Err")
+    plt.xlabel("Variant")
+    plt.title("Avg Abs Err vs. Variant")
+    plt.show()
+
+    #Area
+    plt.bar("unopt - area", 421, width=0.4)
+    plt.bar("opt - area", 2423, width=0.4)
+    plt.bar("balanced - area", 884, width=0.4)
+    plt.ylabel("Area Cost")
+    plt.xlabel("Variant")
+    plt.title("Area vs. Variant")
+    plt.show()
+
+    #SCC Scatterplots
+    vals, counts = np.unique(unopt_sccs, return_counts=True)
+    vals_opt, counts_opt = np.unique(opt_sccs, return_counts=True)
+    vals_opt2, counts_opt2 = np.unique(opt_sccs2, return_counts=True)
+
+    plt.plot(vals, counts, label="unopt", marker='o')
+    plt.plot(vals_opt, counts_opt, label="opt", marker='o')
+    plt.plot(vals_opt2, counts_opt2, label="balanced", marker='o')
+    plt.legend()
+    plt.ylabel("# of input patterns generating SCC")
+    plt.xlabel("SCC")
+    plt.title("Distribution of output SCCs")
+    plt.show()
 
 def test_all_const_VALs():
     for v in CONST_VAL.all_const_vals(4):

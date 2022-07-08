@@ -6,17 +6,61 @@ import cv.img_io as img_io
 from cv.conv_filters import ConvFilters as cf
 import sim.bitstreams as bs
 from sim.SEC import *
+from matplotlib import cm
 
 #import sim.scc_sat as ss
 import sim.circuits as cir
 
 def plot_random():
     """Misc plotting"""
-    plt.bar("mux", 0.66, width=0.4, yerr=0.15)
-    plt.bar("maj", 0.84, width=0.4, yerr=0.07)
-    plt.bar("opt", 0.88, width=0.4, yerr=0.03)
-    plt.xlabel("Circuit")
-    plt.ylabel("Avg SCC")
+    m = 30
+    x_ = np.linspace(0., 1., m)
+    y_ = np.linspace(0., 1., m)
+    z_ = np.linspace(0., 1., m)
+
+    def scc_of_circ(pc, pmin, pmax):
+        num = pmin*(1.-pc)+pc*(pmax-1.)
+        px = 1.-pc
+        py = pmax - pmin
+        pxpy = px*py
+        if num >= 0.:
+            denom = np.minimum(px, py) - pxpy
+        else:
+            denom = pxpy - np.maximum(px + py - 1, 0)
+        if denom == 0.:
+            return 1.0
+        return num / denom
+
+    xs = []
+    ys = []
+    zs = []
+    sccs = []
+    for x in x_:
+        print(x)
+        for y in y_:
+            for z in z_:
+                if x >= y >= z:
+                    xs.append(x)
+                    ys.append(y)
+                    zs.append(z)
+                    sccs.append(scc_of_circ(y, z, x))
+    fig = plt.figure(figsize=(12,7))
+    ax = fig.add_subplot(projection='3d')
+    img = ax.scatter(xs, ys, zs, c=sccs, cmap=cm.get_cmap('seismic'))
+    fig.colorbar(img)
+
+    ax.set_xlabel('pmax')
+    ax.set_ylabel('pc')
+    ax.set_zlabel('pmin')
+
+    #plt.bar("mux", 0.66, width=0.4, yerr=0.15)
+    #plt.bar("maj", 0.84, width=0.4, yerr=0.07)
+    #plt.bar("opt", 0.88, width=0.4, yerr=0.03)
+    #plt.xlabel("Circuit")
+    #plt.ylabel("Avg SCC")
+    plt.show()
+
+    plt.hist(sccs, rwidth=5, bins='auto')
     plt.show()
 
 def plot_img_conv_mse(img_path):

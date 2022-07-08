@@ -3,6 +3,7 @@ import numpy as np
 import copy
 from sim.PTM import *
 from sim.circuits_obj import *
+from scipy.special import comb
 
 def get_SEC_class(func, nc, nv, k, consts):
     #Expects the circuit function's inputs to be ordered with all constants first
@@ -89,9 +90,11 @@ def opt_K_min(K):
     K_max = opt_K_max(K)
     return np.flip(K_max, axis=1)
 
-def opt_K_zero(K1, K2):
+def opt_K_zero(K1, K2, roll_together=False):
+    """The roll_together option may help to mitigate the HUGE increase in area that the 
+        actual optimal SCC=0 circuit has (At the cost of some correlation)"""
     K1_opt = opt_K_max(K1)
-    K2_opt = opt_K_min(K2)
+    
     w1 = np.sum(K1, axis=1)
     w2 = np.sum(K2, axis=1)
 
@@ -99,28 +102,24 @@ def opt_K_zero(K1, K2):
     novs = np.round((w1*w2)/nc2).astype(np.int32)
 
     K2_0 = np.zeros_like(K2)
-    for i in range(nv2):
-        K2_0[i, :] = K2_opt[i, :]
-        nov = novs[i]
-        while np.sum(K1_opt[i, :] & K2_0[i, :]) < nov:
-            K2_0[i, :] = np.roll(K2_0[i, :], 1)
-        
-        #w = w2[i]
-        #placed = 0
-        #for j in range(nc2):
-        #    other = K1_opt[i, j]
-        #    if other:
-        #        if placed < nov:
-        #            K2_0[i, j] = True
-        #            placed += 1
-        #        else:
-        #            K2_0[i, j] = False
-        #    elif placed < w:
-        #        K2_0[i, j] = True
-        #        placed += 1
-        #    else:
-        #        K2_0[i, j] = False
-
+    if roll_together:
+        K2_opt = opt_K_max(K2)
+        nrolls = 0
+        for i in range(nv2):
+            s1 = np.sum(K1_opt[i, :])
+            s2 = np.sum(K2_opt[i, :])
+            if s1 >= s2:
+                nrolls += s1 - novs[i]
+            else:
+                nrolls += novs[i] - s2
+        K2_0 = np.roll(K2_opt, np.rint(nrolls / nv2).astype(np.int32))
+    else:
+        K2_opt = opt_K_min(K2)
+        for i in range(nv2):
+            K2_0[i, :] = K2_opt[i, :]
+            nov = novs[i]
+            while np.sum(K1_opt[i, :] & K2_0[i, :]) < nov:
+                K2_0[i, :] = np.roll(K2_0[i, :], 1)
     return K1_opt, K2_0
 
 def get_all_rolled(K):
@@ -137,12 +136,16 @@ def get_all_rolled(K):
 
 def get_num_in_SEC(K):
     """Use the equation from the SEC paper to get the number of equivalent circuits for a given K matrix"""
-    pass
+    nv2, nc2 = K.shape
+    prod = 1
+    for row in range(nv2):
+        weight = np.sum(K[row, :])
+        prod *= comb(nc2, weight, exact=True)
+    return prod
 
 def get_all_in_SEC(K):
     """Yield all possible circuits equivalent to the given K matrix"""
     pass
-
 
 def Ks_to_Mf(Ks):
     nc, nv = np.log2(Ks[0].shape)

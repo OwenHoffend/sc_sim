@@ -12,7 +12,10 @@ def bin_array(num, m):
 
 def int_array(bmat):
     "Convert a bin_array back to an int one"
-    _, n = bmat.shape
+    if len(bmat.shape) == 1:
+        n = bmat.size
+    else:
+        _, n = bmat.shape
     bmap = np.array([1 << x for x in range(n)])
     return bmat @ bmap
 

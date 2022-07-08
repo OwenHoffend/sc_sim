@@ -121,6 +121,17 @@ class NOT(Circuit): #Propagates constants
     def __init__(self, nc=0):
         super().__init__(np.bitwise_not, 1, 1, nc=nc)
 
+class LOGIC_REDUCE(SeriesCircuit):
+    def __init__(self, n, f):
+        assert n >= 2
+        layers = []
+        for i in range(n-1):
+            if n-i > 2:
+                layers.append(ParallelCircuit([f(), I(n-i-2)]))
+            else:
+                layers.append(f())
+        super().__init__(layers)
+
 class BUS(Circuit):
     """Takes a list of length k called "mappings", which specifies the source input index for each output of the bus"""
     def __init__(self, n, k, mappings, nc=0):
@@ -254,7 +265,7 @@ class CONST_VAL(SeriesCircuit):
 
 class PCC(SeriesCircuit):
     """Generate an n-bit PCC, where the variable inputs are either 0 or 1, and the constant inputs come from LFSR"""
-    def __init__(self, n):
+    def __init__(self, n, use_maj=False):
         mappings = []
         for i in range(n):
             mappings.append(i) #Variable inputs
@@ -263,28 +274,30 @@ class PCC(SeriesCircuit):
             BUS(2*n, 2*n, mappings, nc = n), 
             ParallelCircuit([I(2*n-2), AND()])
         ]
+        if use_maj:
+            adder = MAJ
+        else:
+            adder = MUX
         remaining = 2*n-2
         for i in range(n-2):
             remaining -= 2
-            layers.append(ParallelCircuit([I(remaining), MUX()]))
-        layers.append(MUX())
+            layers.append(ParallelCircuit([I(remaining), adder()]))
+        layers.append(adder())
         super().__init__(layers)
 
-class PCC_2(SeriesCircuit):
-    "Pair of PCCs for testing SCC"
-    def __init__(self, n):
+class PCC_k(SeriesCircuit):
+    def __init__(self, n, k, use_maj=False):
+        if n == 1:
+            self = PCC(n, use_maj=use_maj)
         mappings = []
-        for i in range(n):
-            mappings.append(i)
-        for i in range(n):
-            mappings.append(i+2*n)
-        for i in range(n):
-            mappings.append(i+n)
-        for i in range(n):
-            mappings.append(i+2*n)
+        for k_i in range(k):
+            for i in range(n):
+                mappings.append(i+k_i*n)
+            for i in range(n):
+                mappings.append(i+k*n)
         layers = [
-            BUS(3*n, 4*n, mappings, nc = n),
-            ParallelCircuit([PCC(n), PCC(n)])
+            BUS((k+1)*n, 2*k*n, mappings, nc = n),
+            ParallelCircuit([PCC(n, use_maj=use_maj) for _ in range(k)])
         ]
         super().__init__(layers)
 
