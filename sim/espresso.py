@@ -5,8 +5,13 @@ from sim.PTM import *
 def PTM_to_espresso_input(ptm, fn, inames=None, onames=None):
     n, k = np.log2(ptm.shape).astype(np.uint16)
     Bk = B_mat(k)
-    Bn = B_mat(n)
     A = ptm @ Bk
+    A_to_espresso_input(A, fn, inames=inames, onames=onames)
+
+def A_to_espresso_input(A, fn, inames=None, onames=None):
+    n = np.log2(A.shape[0]).astype(np.uint16)
+    k = A.shape[1]
+    Bn = B_mat(n)
     with open(fn, 'w') as f:
         f.write(".i {}\n".format(n))
         f.write(".o {}\n".format(k))
@@ -20,8 +25,11 @@ def PTM_to_espresso_input(ptm, fn, inames=None, onames=None):
             f.write(instr + " " + outstr + "\n")
         f.write(".e")
 
-def espresso_get_SOP_area(ptm, fn, inames=None, onames=None, do_print=False):
-    PTM_to_espresso_input(ptm, fn, inames=inames, onames=onames)
+def espresso_get_SOP_area(cir_spec, fn, inames=None, onames=None, do_print=False, is_A=False):
+    if is_A:
+        A_to_espresso_input(cir_spec, fn, inames=inames, onames=onames)
+    else:
+        PTM_to_espresso_input(cir_spec, fn, inames=inames, onames=onames)
     p = subprocess.Popen("./Espresso {}".format(fn), stdout=subprocess.PIPE)
     (output, err) = p.communicate()
     p_status = p.wait()
@@ -35,4 +43,6 @@ def espresso_get_SOP_area(ptm, fn, inames=None, onames=None, do_print=False):
             cost += line_.count('0')
         elif line.startswith('.p'):
             cost += int(line.split(' ')[1])
+    if cost == 0 and is_A: #Check for errors due to IPC
+        assert np.all(cir_spec == 0)
     return cost

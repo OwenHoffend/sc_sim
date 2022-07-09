@@ -1,9 +1,9 @@
-from multiprocessing.sharedctypes import Value
 import numpy as np
 import copy
 from sim.PTM import *
 from sim.circuits_obj import *
 from scipy.special import comb
+from sim.espresso import espresso_get_SOP_area
 
 def get_SEC_class(func, nc, nv, k, consts):
     #Expects the circuit function's inputs to be ordered with all constants first
@@ -143,9 +143,106 @@ def get_num_in_SEC(K):
         prod *= comb(nc2, weight, exact=True)
     return prod
 
-def get_all_in_SEC(K):
-    """Yield all possible circuits equivalent to the given K matrix"""
-    pass
+def opt_area_SECO(K1, K2, cache_file='SECO_test_2.json', print_final_espresso=True):
+    from sympy.utilities.iterables import multiset_permutations
+    import json
+    import os
+    """Use SECO-style area optimization method to jointly optimize area and correlation"""
+    nv2, nc2 = K1.shape
+    max_iters = 100
+
+    #For assertions
+    sum_k1 = np.sum(K1, axis=1)
+    sum_k2 = np.sum(K2, axis=1)
+
+    if cache_file is not None and os.path.exists(cache_file):
+        with open(cache_file, 'r') as r:
+            cost_cache = json.load(r)
+    else:
+        cost_cache = {}
+    costs = []
+    perms = []
+    for row in range(nv2):
+        s = np.array([K1[row, :], K2[row, :]])
+        s_int = np.array([int_array(s_i) for s_i in s.T])
+        print(s_int)
+        row_costs = []
+        row_perms = []
+        for p in multiset_permutations(s_int):
+            p_bin = np.array([bin_array(p_i, 2) for p_i in p])
+            key = str(list(p_bin))
+            if key in cost_cache:
+                cost = cost_cache[key]
+            else:
+                cost = espresso_get_SOP_area(p_bin, "opt_area_SECO.in", is_A=True)
+                cost_cache[key] = cost
+            row_costs.append(cost)
+            row_perms.append(np.flip(p_bin, axis=0))
+        row_costs = np.array(row_costs)
+        row_perms = np.array(row_perms)
+        order = row_costs.argsort()
+        row_costs = row_costs[order]
+        row_perms = row_perms[order, :]
+        costs.append(row_costs)
+        perms.append(row_perms)
+    
+    with open(cache_file, "w") as w:
+        json.dump(cost_cache, w)
+
+    row_implicant_inds = np.zeros(nv2, dtype=np.int32)
+    current_costs = np.zeros(nv2, dtype=np.int32)
+    current_implicants = np.zeros((nv2, nc2, 2), dtype=np.bool_)
+    best_cost = np.inf
+    best_ptm = None
+    for i in range(max_iters):
+        print(i)
+        #Get current implicants to consider
+        best_next = np.inf
+        best_next_ind = None
+        for j in range(nv2):
+            imp_idx = row_implicant_inds[j]
+            current_costs[j] = costs[j][imp_idx]
+            current_implicants[j, :, :] = perms[j][imp_idx, :, :] #perms[j] has shape (#perms, nc2, #outputs)
+            if row_implicant_inds[j] < costs[j].size - 1: #If there's another implicant available for this row still
+                next_cost = costs[j][imp_idx + 1] #Not a bad way to do it but still might be sub-optimal
+                if next_cost < best_next:
+                    best_next_ind = j
+                    best_next = next_cost
+
+        #Combine the implicants and get the espresso area of the result
+        K1_test, K2_test = current_implicants[:,:,0], current_implicants[:,:,1]
+        ptm = Ks_to_Mf([K1_test, K2_test])
+
+        #Equivalence assertion
+        assert np.all(np.sum(K1_test, axis=1) == sum_k1)
+        assert np.all(np.sum(K2_test, axis=1) == sum_k2)
+
+        #Correlation assertion
+        for row in range(nv2):
+            s = np.array([K1[row, :], K2[row, :]])
+            s_test = np.array([K1_test[row, :], K2_test[row, :]])
+            s_int = np.array([int_array(s_i) for s_i in s.T])
+            s_int_test = np.array([int_array(s_i) for s_i in s_test.T])
+            unq, cnt = np.unique(s_int, return_counts=True)
+            unq_test, cnt_test = np.unique(s_int_test, return_counts=True)
+            assert np.all(unq == unq_test)
+            assert np.all(cnt == cnt_test)
+
+        cost = espresso_get_SOP_area(ptm, "opt_area_SECO.in")
+        if cost < best_cost:
+            best_cost = cost
+            print("New best cost: ", best_cost)
+            best_ptm = ptm
+        
+        if best_next_ind is None:
+            print("Reached end of optimization")
+            break
+        else:
+            row_implicant_inds[best_next_ind] += 1
+    if print_final_espresso:
+        espresso_get_SOP_area(best_ptm, "opt_area_SECO.in", do_print=True)
+    print("Opt area: ", best_cost)
+    return best_ptm
 
 def Ks_to_Mf(Ks):
     nc, nv = np.log2(Ks[0].shape)
