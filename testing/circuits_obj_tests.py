@@ -47,6 +47,16 @@ def test_sim_AND():
     Y = rng.bs_lfsr(N, py, keep_rng=False)
     print(bs.bs_mean(cir.eval(X, Y), bs_len=N))
 
+def test_parallel_AND():
+    #Share one const 0.5 input between to AND gates
+    mapping = [0, 2, 1, 2]
+    cir = SeriesCircuit([BUS(3, 4, mapping, nc=1), ParallelCircuit([AND(), AND()])])
+    K1, K2 = get_K_2outputs(cir)
+    K1_opt, K2_opt = opt_K_zero(K1, K2)
+    print("Area before: ", espresso_get_SOP_area(Ks_to_Mf([K1_opt, K2_opt]), "test.in", do_print=True))
+    best_ptm = opt_area_SECO(K1_opt, K2_opt, cache_file="test_parallel_AND.json", simulated_annealing=True)
+    print("Area before: ", espresso_get_SOP_area(best_ptm, "test.in", do_print=True))
+
 def test_PCC():
     n = 4
     cir = PCC(n)
@@ -164,12 +174,14 @@ def test_img_seg_circ():
     K1_opt, K2_opt = opt_K_zero(K1, K2)
     ptm_opt = Ks_to_Mf([K1_opt, K2_opt])
     print(espresso_get_SOP_area(ptm_opt, 'test.in'))
+    #opt_area_SECO(K1_opt, K2_opt, cache_file="image_seg.json", print_final_espresso=True, simulated_annealing=True, sort=False)
 
     #0.6 correlation, better area
     K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
     K2_opt_rolled = np.roll(K2_opt, 1, axis=1)
     ptm_opt2 = Ks_to_Mf([K1_opt, K2_opt_rolled])
     print(espresso_get_SOP_area(ptm_opt2, 'test.in'))
+    #opt_area_SECO(K1_opt, K2_opt, cache_file="image_seg.json", print_final_espresso=True, simulated_annealing=True, sort=False)
     
     B2 = B_mat(2)
 
@@ -257,6 +269,8 @@ def test_img_seg_circ():
     plt.bar("unopt - area", 421, width=0.4)
     plt.bar("opt - area", 2423, width=0.4)
     plt.bar("balanced - area", 884, width=0.4)
+    plt.bar("opt - SA area", 1526, width=0.4)
+    plt.bar("balanced - SA area", 884, width=0.4)
     plt.ylabel("Area Cost")
     plt.xlabel("Variant")
     plt.title("Area vs. Variant")

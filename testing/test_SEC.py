@@ -101,13 +101,16 @@ def test_espresso_2output():
     print(cost)
 
 def test_opt_area_SECO():
-    n = 2
+    n = 3
     cir = PCC_k(n, 2)
     K1, K2 = get_K_2outputs(cir)
+    K1_opt1, K2_opt1 = opt_K_max(K1), opt_K_max(K2)
     K1_opt0, K2_opt0 = opt_K_zero(K1, K2)
     unopt_ptm = Ks_to_Mf([K1_opt0, K2_opt0])
-    best_ptm = opt_area_SECO(K1_opt0, K2_opt0)
+    print("Original area: ", espresso_get_SOP_area(Ks_to_Mf([K1, K2]), "opt_area_SECO.in", do_print=True))
+    print("Opt1 area: ", espresso_get_SOP_area(Ks_to_Mf([K1_opt1, K2_opt1]), "opt_area_SECO.in", do_print=True))
     print("Unopt area: ", espresso_get_SOP_area(unopt_ptm, "opt_area_SECO.in"))
+    best_ptm = opt_area_SECO(K1_opt0, K2_opt0, simulated_annealing=True, sort=False)
     print(best_ptm)
     np.save("best_ptm", best_ptm)
 

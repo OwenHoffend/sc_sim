@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import copy
 from sim.PTM import *
 from sim.circuits_obj import *
@@ -143,14 +144,35 @@ def get_num_in_SEC(K):
         prod *= comb(nc2, weight, exact=True)
     return prod
 
-def opt_area_SECO(K1, K2, cache_file='SECO_test_2.json', print_final_espresso=True):
+def get_implicants(costs, perms, nv2, nc2):
+    def get_col_idx_rec(row_idx, depth_limit):
+        ncols = costs[row_idx].size
+        if ncols > depth_limit:
+            ncols = depth_limit
+        for col_idx in range(ncols):
+            if row_idx == nv2-1: #Last row
+                    yield [col_idx]
+            else:
+                for sub_list in get_col_idx_rec(row_idx + 1, depth_limit):
+                    yield [col_idx] + sub_list
+    
+    max_depth_limit = max([costs[x].size for x in range(nv2)])
+    for depth_limit in range(3, max_depth_limit):
+        print("Depth Limit: ", depth_limit)
+        for col_inds in get_col_idx_rec(0, depth_limit):
+            current_implicants = np.zeros((nv2, nc2, 2), dtype=np.bool_)
+            for row, col in enumerate(col_inds):
+                current_implicants[row, :, :] = perms[row][col, :, :]
+            yield current_implicants
+
+def opt_area_SECO(K1, K2, cache_file='SECO_test_3.json', print_final_espresso=True, simulated_annealing=False, sort=True):
     from sympy.utilities.iterables import multiset_permutations
     import json
     import os
     """Use SECO-style area optimization method to jointly optimize area and correlation"""
     nv2, nc2 = K1.shape
-    max_iters = 100
-
+    max_iters = 10000
+        
     #For assertions
     sum_k1 = np.sum(K1, axis=1)
     sum_k2 = np.sum(K2, axis=1)
@@ -180,65 +202,120 @@ def opt_area_SECO(K1, K2, cache_file='SECO_test_2.json', print_final_espresso=Tr
             row_perms.append(np.flip(p_bin, axis=0))
         row_costs = np.array(row_costs)
         row_perms = np.array(row_perms)
-        order = row_costs.argsort()
-        row_costs = row_costs[order]
-        row_perms = row_perms[order, :]
+        if sort:
+            order = row_costs.argsort()
+            row_costs = row_costs[order]
+            row_perms = row_perms[order, :]
         costs.append(row_costs)
         perms.append(row_perms)
     
     with open(cache_file, "w") as w:
         json.dump(cost_cache, w)
 
-    row_implicant_inds = np.zeros(nv2, dtype=np.int32)
-    current_costs = np.zeros(nv2, dtype=np.int32)
-    current_implicants = np.zeros((nv2, nc2, 2), dtype=np.bool_)
     best_cost = np.inf
+    best_inds = None
     best_ptm = None
-    for i in range(max_iters):
-        print(i)
-        #Get current implicants to consider
-        best_next = np.inf
-        best_next_ind = None
-        for j in range(nv2):
-            imp_idx = row_implicant_inds[j]
-            current_costs[j] = costs[j][imp_idx]
-            current_implicants[j, :, :] = perms[j][imp_idx, :, :] #perms[j] has shape (#perms, nc2, #outputs)
-            if row_implicant_inds[j] < costs[j].size - 1: #If there's another implicant available for this row still
-                next_cost = costs[j][imp_idx + 1] #Not a bad way to do it but still might be sub-optimal
-                if next_cost < best_next:
-                    best_next_ind = j
-                    best_next = next_cost
+    if simulated_annealing:
+        running_costs = []
+        col_inds = [0 for _ in range(nv2)]
+        new_col_inds = [0 for _ in range(nv2)]
+        current_implicants = np.zeros((nv2, nc2, 2), dtype=np.bool_)
+        increase_cnt = 0
+        for i in range(max_iters):
+            for row, col in enumerate(new_col_inds):
+                current_implicants[row, :, :] = perms[row][col, :, :]
+            K1_test, K2_test = current_implicants[:,:,0], current_implicants[:,:,1]
+            ptm = Ks_to_Mf([K1_test, K2_test])
 
-        #Combine the implicants and get the espresso area of the result
-        K1_test, K2_test = current_implicants[:,:,0], current_implicants[:,:,1]
-        ptm = Ks_to_Mf([K1_test, K2_test])
+            #Equivalence assertion
+            assert np.all(np.sum(K1_test, axis=1) == sum_k1)
+            assert np.all(np.sum(K2_test, axis=1) == sum_k2)
+            
+            #Correlation assertion
+            for row in range(nv2):
+                s = np.array([K1[row, :], K2[row, :]])
+                s_test = np.array([K1_test[row, :], K2_test[row, :]])
+                s_int = np.array([int_array(s_i) for s_i in s.T])
+                s_int_test = np.array([int_array(s_i) for s_i in s_test.T])
+                unq, cnt = np.unique(s_int, return_counts=True)
+                unq_test, cnt_test = np.unique(s_int_test, return_counts=True)
+                assert np.all(unq == unq_test)
+                assert np.all(cnt == cnt_test)
 
-        #Equivalence assertion
-        assert np.all(np.sum(K1_test, axis=1) == sum_k1)
-        assert np.all(np.sum(K2_test, axis=1) == sum_k2)
+            T = 1 - i/max_iters
+            cost = espresso_get_SOP_area(ptm, "opt_area_SECO.in")
+            if cost < best_cost:
+                p = 1.0
+                best_cost = cost
+                print("New best cost: ", best_cost)
+                best_ptm = ptm
+                np.save("best_ptm", best_ptm)
+                best_inds = copy.copy(new_col_inds)
+                increase_cnt = 0
+            else:
+                increase_cnt += 1
+                p = np.exp((best_cost-cost) / (T * best_cost))
 
-        #Correlation assertion
-        for row in range(nv2):
-            s = np.array([K1[row, :], K2[row, :]])
-            s_test = np.array([K1_test[row, :], K2_test[row, :]])
-            s_int = np.array([int_array(s_i) for s_i in s.T])
-            s_int_test = np.array([int_array(s_i) for s_i in s_test.T])
-            unq, cnt = np.unique(s_int, return_counts=True)
-            unq_test, cnt_test = np.unique(s_int_test, return_counts=True)
-            assert np.all(unq == unq_test)
-            assert np.all(cnt == cnt_test)
+            running_costs.append(best_cost)
+            if p >= np.random.uniform():
+                col_inds = new_col_inds
 
-        cost = espresso_get_SOP_area(ptm, "opt_area_SECO.in")
-        if cost < best_cost:
-            best_cost = cost
-            print("New best cost: ", best_cost)
-            best_ptm = ptm
-        
-        if best_next_ind is None:
-            print("Reached end of optimization")
-            break
+            #Make a random step
+            row = np.random.randint(0, nv2)
+            row_max = costs[row].size - 1
+            new_col_inds = copy.copy(col_inds)
+            if row_max != 0:
+                if col_inds[row] == 0:
+                    new_col_inds[row] += 1
+                elif col_inds[row] == row_max: #or col_inds[row] == max_depth-1:
+                    new_col_inds[row] -= 1
+                else:
+                    new_col_inds[row] += np.random.choice([-1, 1])
+
+            if increase_cnt == 25: #np.rint(T*10):
+                new_col_inds = copy.copy(best_inds)
+                increase_cnt = 0
+
+            if i % 100 == 0:
+                print("Iter: ", i)
+        plt.plot(running_costs)
+        plt.show()
+    else:
+        i = 0
+        for current_implicants in get_implicants(costs, perms, nv2, nc2):
+            ##Combine the implicants and get the espresso area of the result
+            K1_test, K2_test = current_implicants[:,:,0], current_implicants[:,:,1]
+            ptm = Ks_to_Mf([K1_test, K2_test])
+
+            #Equivalence assertion
+            assert np.all(np.sum(K1_test, axis=1) == sum_k1)
+            assert np.all(np.sum(K2_test, axis=1) == sum_k2)
+            
+            #Correlation assertion
+            for row in range(nv2):
+                s = np.array([K1[row, :], K2[row, :]])
+                s_test = np.array([K1_test[row, :], K2_test[row, :]])
+                s_int = np.array([int_array(s_i) for s_i in s.T])
+                s_int_test = np.array([int_array(s_i) for s_i in s_test.T])
+                unq, cnt = np.unique(s_int, return_counts=True)
+                unq_test, cnt_test = np.unique(s_int_test, return_counts=True)
+                assert np.all(unq == unq_test)
+                assert np.all(cnt == cnt_test)
+
+            cost = espresso_get_SOP_area(ptm, "opt_area_SECO.in")
+            if cost < best_cost:
+                best_cost = cost
+                print("New best cost: ", best_cost)
+                best_ptm = ptm
+            
+            i+=1
+            if i == max_iters:
+                break
+            if i % 100 == 0:
+                print("Iter: ", i)
         else:
-            row_implicant_inds[best_next_ind] += 1
+            print("Reached the end of optimization") 
+
     if print_final_espresso:
         espresso_get_SOP_area(best_ptm, "opt_area_SECO.in", do_print=True)
     print("Opt area: ", best_cost)
