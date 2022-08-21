@@ -249,17 +249,33 @@ def get_func_mat(func, n, k):
     """Compute the PTM for a boolean function with n inputs and k outputs
         Does not handle probabilistic functions, only pure boolean functions"""
     Mf = np.zeros((2 ** n, 2 ** k), dtype=bool)
-    for i in range(2 ** n):
-        res = func(*list(bin_array(i, n)))
-        if k == 1:
+
+    if k == 1:
+        for i in range(2 ** n):
+            res = func(*list(bin_array(i, n)))
             num = res.astype(np.uint8)
-        else:
+            Mf[i][num] = 1
+    else:
+        for i in range(2 ** n):
+            res = func(*list(bin_array(i, n)))
             num = 0
             for idx, j in enumerate(res):
                 if j:
                     num += 1 << idx
-        Mf[i][num] = 1
+            Mf[i][num] = 1
     return Mf
+
+    #for i in range(2 ** n):
+    #    res = func(*list(bin_array(i, n)))
+    #    if k == 1:
+    #        num = res.astype(np.uint8)
+    #    else:
+    #        num = 0
+    #        for idx, j in enumerate(res):
+    #            if j:
+    #                num += 1 << idx
+    #    Mf[i][num] = 1
+    #return Mf
 
 def apply_ptm_to_bs(bs_mat, Mf):
     """Given a set of input bitstrems, compute the output bitstreams for the circuit defined by the PTM Mf
@@ -341,7 +357,14 @@ def get_corr_mat_paper(ptv, invalid_corr=1):
             else:
                 norm = p_uncorr - np.maximum(P[i] + P[j] - 1, 0)
             if norm == 0:
-                C[i, j] = invalid_corr
+
+                #This is the "invalid corr" decision that Tim uses:
+                if cov > 0:
+                    C[i, j] = -1
+                else:
+                    C[i, j] = 1
+                    
+                #C[i, j] = invalid_corr
             else:
                 C[i, j] = cov / norm
     return C
