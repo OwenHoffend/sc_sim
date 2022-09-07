@@ -165,13 +165,13 @@ def get_implicants(costs, perms, nv2, nc2):
                 current_implicants[row, :, :] = perms[row][col, :, :]
             yield current_implicants
 
-def opt_area_SECO(K1, K2, cache_file='SECO_test_3.json', print_final_espresso=True, simulated_annealing=False, sort=True):
+def opt_area_SECO(K1, K2, cache_file='test.json', print_final_espresso=True, simulated_annealing=False, sort=True):
     from sympy.utilities.iterables import multiset_permutations
     import json
     import os
     """Use SECO-style area optimization method to jointly optimize area and correlation"""
     nv2, nc2 = K1.shape
-    max_iters = 10000
+    max_iters = 2000
         
     #For assertions
     sum_k1 = np.sum(K1, axis=1)

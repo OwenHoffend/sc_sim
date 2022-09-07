@@ -25,12 +25,27 @@ def A_to_espresso_input(A, fn, inames=None, onames=None):
             f.write(instr + " " + outstr + "\n")
         f.write(".e")
 
+def espresso_get_cost(fn):
+    cost = 0
+    with open(fn, 'r') as infile:
+        for line in infile:
+            if not line.startswith('.'):
+                line_ = line.split(' ')[0]
+                cost += line_.count('1')
+                cost += line_.count('0')
+            elif line.startswith('.p'):
+                cost += int(line.split(' ')[1])
+    print(cost)
+    return cost
+
 def espresso_get_SOP_area(cir_spec, fn, inames=None, onames=None, do_print=False, is_A=False):
     if is_A:
         A_to_espresso_input(cir_spec, fn, inames=inames, onames=onames)
     else:
         PTM_to_espresso_input(cir_spec, fn, inames=inames, onames=onames)
     p = subprocess.Popen("./Espresso {}".format(fn), stdout=subprocess.PIPE)
+    #p = subprocess.Popen("./espresso {}".format(fn), stdout=subprocess.PIPE) #new espresso executable
+
     (output, err) = p.communicate()
     p_status = p.wait()
     cost = 0

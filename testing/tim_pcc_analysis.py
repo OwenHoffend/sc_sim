@@ -2,6 +2,8 @@ from multiprocessing import Pool
 import numpy as np
 from sim.circuits import mux_1, maj_1
 from sim.PTM import *
+from cv.img_io import disp_img
+import matplotlib.pyplot as plt
 
 def mmc8(*c, k=0, v=[False for _ in range(8)]):
     z = False
@@ -50,7 +52,7 @@ def med3x3(
     return s(g4, h8)[0]
 
 def check_sccs(k):
-    SCCs = np.load("../tim_pcc/SCC_data_n8.npy")
+    SCCs = np.load("../tim_pcc_run2/SCC_data_n8.npy")
     vin = get_vin_mc0(np.array([0.5 for _ in range(8)]))
     bin_arrs = np.zeros((256, 8), dtype=bool) #cache int-->bit array conversion
     B2 = B_mat(2)
@@ -81,17 +83,20 @@ def check_sccs(k):
                 print("Pout 0: {}, i/256: {}".format(pout[0], i/256))
                 print("Pout 1: {}, j/256: {}".format(pout[1], j/256))
 
-def check_imgs(k):
-    all_images = np.load("../tim_pcc/test_images.npy", allow_pickle=True)
+def check_imgs(k, min_idx, max_idx):
+    import os
+    all_images = []
+    for fn in os.listdir("../tim_pcc_run2/"):
+        all_images.append(np.load("../tim_pcc_run2/{}".format(fn), allow_pickle=True))
     vin = get_vin_mc0(np.array([0.5 for _ in range(8)]))
     median_filter_ptm = get_func_mat(med3x3, 9, 1)
     bin_arrs = np.zeros((256,), dtype=object) #cache int-->bit array conversion
     for i in range(256):
         bin_arrs[i] = list(bin_array(i, 8))
-    all_rmses = []
-    all_expected_outputs = []
-    B9 = B_mat(9)
-    for img_idx, image in enumerate(all_images):  # all_images is a list of the 10 test images from MATLAB
+        
+    #B9 = B_mat(9)
+    for img_idx in range(min_idx, max_idx):  # all_images is a list of the 10 test images from MATLAB
+        image = all_images[img_idx]
         h, w = image.shape
 
         #Override h and w to test some stuff without it taking forever
@@ -101,7 +106,7 @@ def check_imgs(k):
         for c_x in range(1, w-1): #Center x
             print("img: {}, c_x: {}, k: {}".format(img_idx, c_x, k))
             for c_y in range(1, h-1): #Center y
-                kernel_vals = image_int[c_x-1:c_x+2, c_y-1:c_y+2].reshape(9)
+                kernel_vals = image_int[c_y-1:c_y+2, c_x-1:c_x+2].reshape(9)
                 kernel_px = kernel_vals/256
                 mmcs = [get_mmc(k, bin_arrs[val]) for val in kernel_vals]
                 all_mmcs = lambda *c: mmc_many(*c, mmcs=mmcs)
@@ -114,48 +119,116 @@ def check_imgs(k):
                 #    print("BAD PCC OUTPUT")
 
                 pout = (median_filter_ptm.T @ v_pcc)[1] #Expected output
-                curr_expected_out[c_x-1, c_y-1] = pout
+                curr_expected_out[c_y-1, c_x-1] = pout
                 img_MSE += (pout - np.median(kernel_px)) ** 2
         img_MSE /= 256 ** 2
         RMSE = np.sqrt(img_MSE)
         print("DONE img: {}, k: {}, RMSE: {}".format(img_idx, k, RMSE))
         if k==8 and not np.isclose(RMSE, 0):
             print("TOO MUCH ERROR FOR COMPARATOR CASE")
-        all_expected_outputs.append(curr_expected_out)
-        all_rmses.append(RMSE)
-        np.save("../tim_pcc/temp_all_es_img{}_k{}.npy".format(img_idx, k), np.array(all_expected_outputs, dtype=object))
-        np.save("../tim_pcc/temp_all_rmses_img{}_k{}.npy".format(img_idx, k), np.array(all_rmses, dtype=object))
-    return all_expected_outputs, all_rmses
+        np.save("../tim_pcc_run2/temp_all_es_img{}_k{}.npy".format(img_idx, k), curr_expected_out)
+        np.save("../tim_pcc_run2/temp_all_rmses_img{}_k{}.npy".format(img_idx, k), RMSE)
+
+def check_imgs_mp(p):
+    if p >= 8:
+        return check_imgs(p-8, 5, 10)
+    else:
+        return check_imgs(p, 0, 5)
+
+def correct_median_filter(img):
+    h, w = img.shape
+    output = np.empty((h-2, w-2))  # a 3x3 filter can be applied to an h x w image (h-2) x (w-2) times.
+    for c_x in range(1, w-1): #Center x
+        for c_y in range(1, h-1): #Center y
+            kernel_vals = img[c_y-1:c_y+2, c_x-1:c_x+2].reshape(9)
+            output[c_y-1, c_x-1] = np.median(kernel_vals)
+    return output
 
 def tims_analysis():
     #First step would be to reproduce Tim's array using my own technique to ensure that it works
     #with Pool(8) as p:
     #    p.map(check_sccs, list(range(8)))
 
-    max_k = 8
-    with Pool(max_k) as p:
-        results = p.map(check_imgs, list(range(max_k)))
+    check_imgs(0, 0, 5)
+    #with Pool(16) as p:
+    #    p.map(check_imgs_mp, list(range(16)))
 
-    #process results
+    #open results - original data
+    #results_k = []
+    #results_rmse_k = []
+    #for k in range(8):
+    #    #results_0_4 = np.load("../tim_pcc_run2/temp_all_es_img4_k{}.npy".format(k), allow_pickle=True)
+    #    results_rmse_0_4 = np.load("../tim_pcc_run2/temp_all_rmses_img4_k{}.npy".format(k), allow_pickle=True)
+    #    #results_5_9 = np.load("../tim_pcc_run2/temp_all_es_img9_k{}.npy".format(k), allow_pickle=True)
+    #    results_rmse_5_9 = np.load("../tim_pcc_run2/temp_all_rmses_img9_k{}.npy".format(k), allow_pickle=True)
+    #    #results_k.append(np.concatenate((results_0_4, results_5_9)))
+    #    results_rmse_k.append(np.concatenate((results_rmse_0_4, results_rmse_5_9)))
+#
+
+    #Open results - new data
+    #all_noisy_images = [
+    #    np.load("../tim_pcc_run2/cameraman.npy", allow_pickle=True),
+    #    np.load("../tim_pcc_run2/circuit.npy", allow_pickle=True)
+    #]
+
+    #for img_idx in range(2):
+    #    image = all_noisy_images[img_idx]
+    #    h, w = image.shape
+    #    curr_expected_output = np.empty((8, h-2, w-2))
+    #    curr_rmses = np.empty((8, ))
+    #    for k in range(8):
+    #        curr_expected_output[k, :, :] = np.load("../tim_pcc_run2/temp_all_es_img{}_k{}.npy".format(img_idx, k), allow_pickle=True)
+    #        curr_rmses[k] = np.load("../tim_pcc_run2/temp_all_rmses_img{}_k{}.npy".format(img_idx, k), allow_pickle=True)
+        #disp_img(curr_expected_output[0, :, :]*256)
+        #disp_img(curr_expected_output[3, :, :]*256)
+        #disp_img(curr_expected_output[7, :, :]*256)
+        #np.save("../tim_pcc_run2/results/img{}_expected.npy".format(img_idx), curr_expected_output)
+        #np.save("../tim_pcc_run2/results/img{}_rmse.npy".format(img_idx), curr_rmses)
+
+    #Compute SSIM
     all_images = np.load("../tim_pcc/test_images.npy", allow_pickle=True)
-    all_expected_outputs = []
-    all_rmses = []
-    for img_idx, image in enumerate(all_images):
-        h, w = image.shape
+    from skimage.metrics import structural_similarity as ssim
+    cameraman_img = correct_median_filter(all_images[7])
+    circuit_img = correct_median_filter(all_images[8]) 
+    ssims_cameraman = np.empty((8, ))
+    ssims_circuit = np.empty((8, ))
+    for k in range(8):
+        cameraman_noisy = np.load("../tim_pcc_run2/temp_all_es_img0_k{}.npy".format(k), allow_pickle=True)
+        circuit_noisy = np.load("../tim_pcc_run2/temp_all_es_img1_k{}.npy".format(k), allow_pickle=True)
+        ssims_cameraman[k] = ssim(cameraman_img, cameraman_noisy, data_range=cameraman_noisy.max() - cameraman_noisy.min())
+        ssims_circuit[k] = ssim(circuit_img, circuit_noisy, data_range=circuit_noisy.max() - circuit_noisy.min())
+    np.save("../tim_pcc_run2/results/img0_SSIM.npy", ssims_cameraman)
+    np.save("../tim_pcc_run2/results/img1_SSIM.npy", ssims_circuit)
+    plt.plot(ssims_cameraman, marker='o', label="cameraman")
+    plt.plot(ssims_circuit, marker='o', label="circuit")
+    plt.title("Median Filter SSIM vs. MMC k-value")
+    plt.ylabel("SSIM")
+    plt.xlabel("k")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
-        curr_expected_output = np.empty((max_k, h-2, w-2))
-        curr_rmse = np.empty((max_k, 1))
-        for k in range(max_k): #k=0 through k=max_k-1
-            curr_expected_output[k, :, :] = results[k][0][img_idx]
-            curr_rmse[k, :] = results[k][1][img_idx]
-        all_expected_outputs.append(curr_expected_output)
-        all_rmses.append(curr_rmse)
+    #labels = ["rice", "coins", "pillsetc", "coloredChips", "tape", "lighthouse", "hands1", "cameraman", "circuit", "tire"]
+    #for img_idx in range(10):
+    #    arr = np.empty((8,))
+    #    for k in range(8):
+    #        arr[k] = results_rmse_k[k][img_idx]
+    #    np.save("../tim_pcc_run2/results/img{}_rmse.npy".format(img_idx), arr)
+    #    plt.plot(arr, label=labels[img_idx])
+    #plt.title("3x3 Median Filter - Error from Ideal")
+    #plt.xlabel("k (number of MAJ gates)")
+    #plt.ylabel("RMSE")
+    #plt.legend()
+    #plt.grid(True)
+    #plt.show()
 
-    # the follow lines saves the data so you can send to me
-    filename = f"../tim_pcc/all_expected_outputs_n8.npy"
-    all_expected_outputs = np.array(all_expected_outputs, dtype=object)
-    np.save(filename, all_expected_outputs)
-
-    filename = f"../tim_pcc/all_rmses_n8.npy"
-    all_rmses = np.array(all_rmses, dtype=object)
-    np.save(filename, all_rmses)
+    #for img_idx in range(10):
+    #    image = all_images[img_idx]
+    #    h, w = image.shape
+    #    curr_expected_output = np.empty((8, h-2, w-2))
+    #    for k in range(8):
+    #        curr_expected_output[k, :, :] = results_k[k][img_idx]
+        #disp_img(curr_expected_output[0]*256)
+        #disp_img(curr_expected_output[3]*256)
+        #disp_img(curr_expected_output[7]*256)
+        #np.save("../tim_pcc_run2/results/img{}_expected.npy".format(img_idx), curr_expected_output)

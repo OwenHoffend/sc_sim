@@ -35,25 +35,15 @@ def SEC_opt_2x2_house():
     disp_img(imgs[0])
     test_SEC_opt_2x2_kernel(imgs)
 
-def test_SEC_opt_2x2_kernel(imgs):
+def test_SEC_opt_2x2_kernel(imgs=None):
     #imgs : List of numpy byte arrays, each with a single channel
     lfsr_sz = 9
     N = 2 ** lfsr_sz
     precision = 4
-    num_repeats = 1 #Number of times to run the same kernel
     #kernel = [0.875, 0.875, 0.125, 0.125] #is about the same (no need for improvement)
     #kernel = [0.125, 0.875, 0.875, 0.125] #shows improvement
-    #kernel = [0.0625, 0.9375, 0.9375, 0.0625] #Shows improvement
-    pack = False
-    
-    pre_sccs = []
-    post_sccs = []
-    pre_errs_abs = []
-    post_errs_abs = []
-    pre_errs_mse = []
-    post_errs_mse = []
-    pre_errs_ssim = []
-    post_errs_ssim = []
+    kernel = [0.125, 0.125, 0.8125, 0.0625] #Shows improvement
+    #kernel = [0.875, 0.875, 0.375, 0.625] #Shows improvement
 
     #Plot of results from prior runs (pasted here to save time)
     #plt.bar("Kernel 1 abs err - un-opt", 0.152, width=0.4, yerr=0.03301)
@@ -69,27 +59,85 @@ def test_SEC_opt_2x2_kernel(imgs):
     #plt.bar("Kernel 2 avg scc - opt", 0.929, width=0.4, yerr=0.158)
     #plt.bar("Kernel 2 SSIM - un-opt", 0.993, width=0.4, yerr=0.002)
     #plt.bar("Kernel 2 SSIM - opt", 0.993, width=0.4, yerr=0.003)
-    plt.ylabel("SCC")
-    plt.xlabel("Measure")
-    plt.show()
+    #plt.ylabel("SCC")
+    #plt.xlabel("Measure")
+    #plt.show()
 
+    #cir = PARALLEL_MAC_2(kernel, precision, bipolar=False)
+    #cir_maj = PARALLEL_MAC_2(kernel, precision, bipolar=False, maj=True)
+    #actual_precision = cir.actual_precision
+    relu = SeriesCircuit([ParallelCircuit([NOT(), I(1)]), AND()]).ptm()
+    #mac_ptm = cir.ptm()
+    #mac_ptm_maj = cir_maj.ptm()
+
+    mac_ptm = get_func_mat()
+    mac_ptm_maj = get_func_mat()
+    
+    pre_ptm = mac_ptm @ relu
+    K1, K2 = get_K_2outputs(cir)
+    K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
+    opt_ptm = Ks_to_Mf([K1_opt, K2_opt])
+
+    #----PTV based test----
+    from testing.circuits_obj_tests import all_4_precision_consts
+    ntests = 10000
+    pre_sccs = []
+    maj_sccs = []
+    post_sccs = []
+    for i in range(ntests):
+        print(i)
+        px = np.random.choice(all_4_precision_consts, (2, 2))
+        vin = np.kron(get_vin_mc0(np.array([0.5, 0.5, 0.5, 0.5, 0.5])), get_vin_mc1(np.array([px[0, 0], px[1,0], px[0, 1], px[1, 1]])))
+        vout_mac = mac_ptm.T @ vin
+        vout_maj = mac_ptm_maj.T @ vin
+        vout_opt = opt_ptm.T @ vin
+        
+        #Correctness
+        result_original = B_mat(2).T @ vout_mac
+        result_opt = B_mat(2).T @ vout_opt
+        correct = 0.5 * np.array([ \
+            kernel[0] * px[0, 0] + kernel[2] * px[1, 0], 
+            kernel[1] * px[0, 1] + kernel[3] * px[1, 1]
+        ])
+        #print("Original: ", result_original)
+        #print("Opt: ", result_opt)
+        #print("Correct: ", correct)
+        assert np.all(result_original == result_opt)
+        assert np.all(result_original == correct)
+        assert np.all(result_opt == correct)
+
+        #Correlation
+        pre_sccs.append(get_corr_mat_paper(vout_mac))
+        maj_sccs.append(get_corr_mat_paper(vout_maj))
+        post_sccs.append(get_corr_mat_paper(vout_opt))
+    print("pre" , np.mean(pre_sccs))
+    print("maj", np.mean(maj_sccs))
+    print("post", np.mean(post_sccs))
+
+    if imgs is None:
+        return
+
+    #----Bitstream based test----
+    num_repeats = 1 #Number of times to run the same kernel
+    pack = False
+    pre_sccs = []
+    post_sccs = []
+    pre_errs_abs = []
+    post_errs_abs = []
+    pre_errs_mse = []
+    post_errs_mse = []
+    pre_errs_ssim = []
+    post_errs_ssim = []
+
+    rng = bs.SC_RNG()
+    const_bs = rng.bs_lfsr_p5_consts(N, actual_precision + 1, lfsr_sz, add_zero_state=True, pack=pack)
     for idx, img in enumerate(imgs):
         print(idx)
         h, w = img.shape
         rng = bs.SC_RNG()
         img_bs = img_to_bs(img, rng.bs_uniform, bs_len=N, pack=pack)
         img_float = img.astype(np.float32) / 255.0
-        rng = bs.SC_RNG()
 
-        cir = PARALLEL_MAC_2(kernel, precision, bipolar=False)
-        actual_precision = cir.actual_precision
-        const_bs = rng.bs_lfsr_p5_consts(N, actual_precision + 1, lfsr_sz, add_zero_state=True, pack=pack)
-        relu = SeriesCircuit([ParallelCircuit([NOT(), I(1)]), AND()]).ptm()
-        mac_ptm = cir.ptm()
-        pre_ptm = mac_ptm @ relu
-        K1, K2 = get_K_2outputs(cir)
-        K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
-        opt_ptm = Ks_to_Mf([K1_opt, K2_opt])
         post_ptm =  opt_ptm @ relu
         pre_i_bs = img_bs
         post_i_bs = img_bs

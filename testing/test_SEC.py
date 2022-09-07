@@ -64,15 +64,22 @@ def test_SEC_parallel_const_mul():
     print("break")
 
 def test_espresso():
-    #cir = PARALLEL_MAC_2([0.25, 0.75, 0.75, 0.5], 2, bipolar=True)
-    cir = PARALLEL_ADD(2)
+    cir = PARALLEL_MAC_2([0.125, 0.875, 0.875, 0.125], 4, bipolar=False)
+    #cir = PARALLEL_ADD(2)
     K1, K2 = get_K_2outputs(cir)
 
-    original_cost = espresso_get_SOP_area(cir.ptm(), "mux.in")
+    inames = ['x1', 'x2', 'x3', 'x4', 'c1', 'c2', 'c3', 's']
+    onames = ['z1', 'z2']
+    original_cost = espresso_get_SOP_area(cir.ptm(), "mux.in", do_print=True)
     print("Original cost " + str(original_cost) + "\n\n")
     costs = []
     min_cost = None
     K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
+
+    #Area optimization by simulated annealing
+    best_ptm = opt_area_SECO(K1_opt, K2_opt, cache_file="2x2_kernel.json", print_final_espresso=True, simulated_annealing=True, sort=False)
+
+    #Area optimization by rolling
     for (K_opt1, K_opt2) in zip(get_all_rolled(K1_opt), get_all_rolled(K2_opt)):
         ptm_opt = Ks_to_Mf([K_opt1, K_opt2])
         cost = espresso_get_SOP_area(ptm_opt, "mux_opt.in", do_print=True)

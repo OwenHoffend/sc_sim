@@ -14,6 +14,9 @@ from testing.test_SEC import *
 from testing.circuits_obj_tests import *
 from testing.circuits_graph_tests import *
 from testing.test_ptm_perturbations import *
+from testing.gauss_blur_ed import *
+from testing.kernel_2x2 import *
+from testing.tim_pcc_analysis import *
 from plotting import plot_random
 
 from sim.circuits import *
@@ -35,10 +38,7 @@ def profile(func):
 
 def main():
     """THIS SHOULD BE THE MAIN ENTRY POINT FOR EVERYTHING!"""
-    #CNN_classifier_main(cifar=False, train=False, sc_quantize=True, nbits=4)
-    #test_MAC_RELU_sim([0.375, 0.9375], [0.625, 0.875, 0.3125], 4)
-    #test_PARALLEL_CONST_sim()
-    test_parallel_PCC()
+    tims_analysis()
 
 if __name__ == "__main__":
     main()
