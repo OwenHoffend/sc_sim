@@ -164,4 +164,93 @@ def test_gauss_blur_4x4():
     print(np.std(unopt_err))
     print(np.mean(opt_err))
     print(np.std(opt_err))
-    pass
+
+def test_gauss_blur_img():
+    #num_tests = 252 ** 2
+    num_tests = 1000
+    gb4_ptm = np.load("gb4_ptm.npy")
+    #gb4_ptm = get_func_mat(gauss_blur_4x4, 20, 4)
+    #np.save("gb4_ptm.npy", gb4_ptm)
+
+    rced_ptm = get_func_mat(robert_cross_r, 5, 1)
+    rced_ptm = reduce_func_mat(rced_ptm, 4, 0.5)
+    A = gb4_ptm @ B_mat(4)
+    Ks = []
+    Ks_opt = []
+    for i in range(4):
+        K = A[:, i].reshape(2**4, 2**16).T
+        K_opt = opt_K_max(K)
+        Ks.append(K)
+        Ks_opt.append(K_opt)
+    gb4_ptm_opt = Ks_to_Mf(Ks_opt)
+
+    #avg_corr = np.zeros((4,4))
+    #avg_corr_opt = np.zeros((4,4))
+    #B4 = B_mat(4)
+    #gk = np.array([0.25, 0.5, 0.25])
+
+    #unopt_err = []
+    #opt_err = []
+    img = load_img("./img/cameraman.png", gs=True)
+    h, w = img.shape
+    v0 = get_vin_mc0(np.array([0.5, 0.5, 0.5, 0.5]))
+
+    #Salt and pepper noise
+    p = 1/32
+    for i in range(h):
+        for j in range(w):
+            if p > np.random.uniform():
+                if 0.5 > np.random.uniform():
+                    img[i, j] = 255
+                else:
+                    img[i, j] = 0
+
+    disp_img(img)
+    
+    #correct_img = np.zeros((h, w))
+    out_img = np.zeros((h, w))
+    out_img_opt = np.zeros((h, w))
+    for i in range(128, 138):
+        print(i)
+        for j in range(w-4):
+            px = img[i:i+4, j:j+4] / 256
+
+            #Correct result computation
+            #c1 = gk.T @ px[0:3, 0:3] @ gk
+            #c2 = gk.T @ px[0:3, 1:4] @ gk
+            #c3 = gk.T @ px[1:4, 0:3] @ gk
+            #c4 = gk.T @ px[1:4, 1:4] @ gk
+            #rced_correct = 0.5*(np.abs(c1-c4) + np.abs(c2-c3))
+
+            v_in = np.kron(v0, get_vin_mc1(px.reshape(16, )))
+            result_ptv = gb4_ptm.T @ v_in
+            result_ptv_opt = gb4_ptm_opt.T @ v_in
+            rced_out_ptv = rced_ptm.T @ result_ptv
+            rced_out_ptv_opt = rced_ptm.T @ result_ptv_opt
+
+            #unopt_err.append(np.abs(rced_out_ptv[1] - rced_correct))
+            #opt_err.append(np.abs(rced_out_ptv_opt[1] - rced_correct))
+            #correct_img[i, j] = rced_correct
+            out_img[i, j] = rced_out_ptv[1]
+            out_img_opt[i, j] = rced_out_ptv_opt[1]
+
+            #result_pout = B4.T @ result_ptv
+            #result_pout_opt = B4.T @ result_ptv_opt
+            #assert np.all(np.isclose(result_pout, result_pout_opt))
+
+            #cout = get_corr_mat_paper(result_ptv)
+            #cout_opt = get_corr_mat_paper(result_ptv_opt)
+            #avg_corr += cout
+            #avg_corr_opt += cout_opt
+
+    disp_img(out_img * 256 * 2)
+    disp_img(out_img_opt * 256 * 2)
+
+    #avg_corr /= num_tests
+    #avg_corr_opt /= num_tests
+    #print(avg_corr)
+    #print(avg_corr_opt)
+    #print(np.mean(unopt_err))
+    #print(np.std(unopt_err))
+    #print(np.mean(opt_err))
+    #print(np.std(opt_err))

@@ -4,6 +4,16 @@ from sim.SEC import *
 from sim.espresso import *
 import matplotlib.pyplot as plt
 
+def test_SCC_inv():
+    ntrials = 10000
+    for i in range(ntrials):
+        print(i)
+        px = np.random.uniform()
+        py = np.random.uniform()
+        C = (np.random.uniform() * 2) - 1
+        pxy = scc_inv(px, py, C, 0)
+        assert np.isclose(scc(px, py, pxy), C)
+
 def test_K_to_Mf():
     cir = PARALLEL_ADD(2, maj=True)
     Mf_orig = cir.ptm()

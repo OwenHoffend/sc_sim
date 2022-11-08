@@ -91,16 +91,67 @@ def opt_K_min(K):
     K_max = opt_K_max(K)
     return np.flip(K_max, axis=1)
 
-def opt_K_zero(K1, K2, roll_together=False):
+def scc(px, py, pxy, N):
+    delta = pxy - px*py
+    delta_max = min(px, py) - px*py
+    delta_min = max(px + py - 1, 0) - px*py
+
+    if delta > 0:
+        if delta_max == 0:
+            return -1
+        return delta/delta_max
+    else:
+        if delta_min == 0:
+            return 1
+        return -delta/delta_min
+
+def zscc(px, py, pxy, N):
+    delta = pxy - px*py
+    delta0 = np.floor(px*py*N + 0.5)/N - px*py
+    delta_max = min(px, py) - px*py
+    delta_min = max(px + py - 1, 0) - px*py
+
+    if delta > delta0:
+        if delta_max-delta0 == 0:
+            return 0
+        return (delta - delta0)/(delta_max-delta0)
+    else:
+        if delta0-delta_min == 0:
+            return 0
+        return (delta - delta0)/(delta0-delta_min)
+
+def scc_inv(px, py, C, N):
+    delta_max = min(px, py) - px*py
+    delta_min = max(px + py - 1, 0) - px*py
+    if delta_max == 0 or delta_min == 0:
+        return min(px, py)
+    if C > 0:
+        return C * delta_max + px * py
+    return -C * delta_min + px * py
+
+def zscc_inv(px, py, Z, N):
+    delta0 = np.floor(px*py*N + 0.5)/N - px*py
+    delta_max = min(px, py) - px*py
+    delta_min = max(px + py - 1, 0) - px*py
+
+    if Z > 0:
+        return Z * (delta_max - delta0) + delta0 - px*py
+    return Z * (delta_min - delta0) + delta0 - px*py
+
+def opt_K_zero(K1, K2, roll_together=False, use_zscc=False):
     """The roll_together option may help to mitigate the HUGE increase in area that the 
         actual optimal SCC=0 circuit has (At the cost of some correlation)"""
     K1_opt = opt_K_max(K1)
     
+    nv2, nc2 = K1.shape
     w1 = np.sum(K1, axis=1)
     w2 = np.sum(K2, axis=1)
-
-    nv2, nc2 = K1.shape
     novs = np.round((w1*w2)/nc2).astype(np.int32)
+
+    if use_zscc:
+        corr = lambda px, py, pxy: zscc(px, py, pxy, nc2)
+    else:
+        corr = lambda px, py, pxy: scc(px, py, pxy)
 
     K2_0 = np.zeros_like(K2)
     if roll_together:
@@ -115,13 +166,70 @@ def opt_K_zero(K1, K2, roll_together=False):
                 nrolls += novs[i] - s2
         K2_0 = np.roll(K2_opt, np.rint(nrolls / nv2).astype(np.int32))
     else:
-        K2_opt = opt_K_min(K2)
+        K2_opt = opt_K_max(K2)
+        K2_opt_final = np.zeros_like(K2_opt)
         for i in range(nv2):
+            px = w1[i]/nc2
+            py = w2[i]/nc2
             K2_0[i, :] = K2_opt[i, :]
-            nov = novs[i]
-            while np.sum(K1_opt[i, :] & K2_0[i, :]) < nov:
+            K2_opt_final[i, :] = K2_opt[i, :]
+            min_c = 1
+            for _ in range(nc2):
+                pxy = np.sum(K1_opt[i, :] & K2_0[i, :])/nc2
+                c = corr(px, py, pxy)
+                if np.abs(c) < min_c:
+                    min_c = np.abs(c)
+                    K2_opt_final[i, :] = K2_0[i, :]
                 K2_0[i, :] = np.roll(K2_0[i, :], 1)
-    return K1_opt, K2_0
+    return K1_opt, K2_opt_final
+
+def opt_K_C_paper(F1, F2, C, corr_inv):
+    nv2, nc2 = F1.shape
+    F1_opt = np.zeros_like(F1)
+    F2_opt = np.zeros_like(F2)
+    for i in range(nv2):
+        n1 = np.sum(F1[i, :])
+        n2 = np.sum(F2[i, :])
+        for j in range(n1):
+            F1_opt[i, j] = 1
+        pov = corr_inv(n1/nc2, n2/nc2, C, nc2)
+        #nov = np.round(pov*nc2).astype(np.int) #Somehow, this is changing it to be like ZSCC, figure it out later
+        nov = (pov * nc2).astype(np.int) #Even worse than the cost-function alg
+        for j in range(nov):
+            F2_opt[i, j] = 1
+        for j in range(nc2-n2+nov, nc2):
+            F2_opt[i, j] = 1
+        assert sum(F2_opt[i, :]) == n2
+        assert sum(np.bitwise_and(F1_opt[i, :], F2_opt[i, :])) == nov
+    return F1_opt, F2_opt
+
+def opt_K_C_paper_iterative(F1, F2, C, corr=scc):
+    nv2, nc2 = F1.shape
+    F1_opt = np.zeros_like(F1)
+    F2_opt = np.zeros_like(F2)
+    for i in range(nv2):
+        b = np.zeros_like(F1[i, :])
+        n1 = np.sum(F1[i, :])
+        n2 = np.sum(F2[i, :])
+        for j in range(n1):
+            F1_opt[i, j] = 1
+        for j in range(n2):
+            b[j] = 1
+        emin = np.inf
+        p1 = n1/nc2
+        p2 = n2/nc2
+        pov = min(p1, p2)
+        j = 0
+        while pov >= max(p1 + p2 - 1, 0):
+            err = np.abs(corr(p1, p2, pov, nc2) - C)
+            if err < emin:
+                emin = err
+                F2_opt[i, :] = b
+            b[j] = 0
+            b[nc2 - j - 1] = 1
+            pov -= 1.0/nc2
+            j += 1
+    return F1_opt, F2_opt
 
 def get_all_rolled(K):
     """Rotate through all possible variants of optimal circuit"""
