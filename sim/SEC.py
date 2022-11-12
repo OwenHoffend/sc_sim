@@ -429,6 +429,13 @@ def opt_area_SECO(K1, K2, cache_file='test.json', print_final_espresso=True, sim
     print("Opt area: ", best_cost)
     return best_ptm
 
+def A_to_Mf(A, n, k):
+    Mf = np.zeros((2**n, 2**k), dtype=np.bool_)
+    for i in range(2**n):
+        x = int_array(A[i, :].reshape(1, k))[0] #<-- why [0]
+        Mf[i, x] = True
+    return Mf
+
 def Ks_to_Mf(Ks):
     nc, nv = np.log2(Ks[0].shape)
     n = int(nv + nc)
@@ -436,11 +443,7 @@ def Ks_to_Mf(Ks):
     A = np.zeros((2**n, k), dtype=np.bool_)
     for i, K in enumerate(Ks):
         A[:, i] = K.T.reshape(2**n)
-    Mf = np.zeros((2**n, 2**k), dtype=np.bool_)
-    for i in range(2**n):
-        x = int_array(A[i, :].reshape(1, k))
-        Mf[i, x] = True
-    return Mf
+    return A_to_Mf(A, n, k)
 
 def get_K_2outputs(cir, o1_idx=0, o2_idx=1):
     Mf = cir.ptm()

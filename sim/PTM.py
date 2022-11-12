@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torch._C import _valgrind_supported_platform
 import sim.bitstreams as bs
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -17,7 +16,7 @@ def int_array(bmat):
     else:
         _, n = bmat.shape
     bmap = np.array([1 << x for x in range(n)])
-    return bmat @ bmap
+    return (bmat @ bmap).astype(int)
 
 B_mat_dict = {}
 def B_mat(n, cuda=False):

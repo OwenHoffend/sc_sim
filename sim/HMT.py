@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sim.PTM import *
+from sim.SEC_opt_macros import *
 from sim.circuits import mux_1
 
 #Hardwired MUX tree generation for correlation analysis
@@ -12,9 +13,7 @@ def HMT(consts, precision):
     """
     assert np.sum(consts) <= precision #Weights should not sum to more than 1
     num_consts = consts.size
-    max_height = np.log2(precision)
-    assert np.ceil(max_height) == max_height #Precision must be a power of 2
-    max_height = max_height.astype(int)
+    max_height = ilog2(precision)
     bin_reps = np.zeros((num_consts, max_height), dtype=np.bool_)
     for i, const in enumerate(consts):
         bin_reps[i, :] = bin_array(const, max_height)
@@ -41,23 +40,58 @@ def HMT(consts, precision):
                 if len(q) > 0: #Add a MUX
                     b = q.pop(0)
                     oq.append(mux_1(layer_s, a, b))
-                    print("MUX : s{}".format(layer))
+                    #print("MUX : s{}".format(layer))
                 else: #Add an AND gate
                     oq.append(np.bitwise_and(layer_s, a))
-                    print("AND : s{}".format(layer))
-            print("Layer {} has {} outputs".format(layer, len(oq)))
+                    #print("AND : s{}".format(layer))
+            #print("Layer {} has {} outputs".format(layer, len(oq)))
         assert len(oq) == 1
         return oq[0]
     return f
 
 def test_HMT_corr_opt():
     """Generate a bunch of HMTs of various different sizes and evaluate the benefit obtained from SEC optimization"""
-    pass
+    #Run parameters
+    precision = 32
+    num_weights = 9
+    k = 2
+    num_tests = 10000
+    num_area_iters = 3
+    io = IO_Params(ilog2(precision), num_weights, k)
+    
+    for _ in range(num_area_iters):
+        funcs = []
+        consts_mat = np.zeros((num_weights, k))
+        for i in range(k):
+            r = np.random.rand(num_weights)
+            consts = np.floor(precision * r / np.sum(r)).astype(int)
+            consts_mat[:, i] = consts
+            funcs.append(HMT(consts, precision))
+        ptm_orig, ptm_opt = opt_max_multi(funcs, io)
+
+        orig_cost = espresso_get_SOP_area(ptm_orig, "hmt.in")
+        opt_cost = espresso_get_SOP_area(ptm_opt, "hmt.in")
+        print('orig cost: ', orig_cost)
+        print('opt cost: ', opt_cost)
+        print(consts_mat)
+        if opt_cost / orig_cost < 2:
+            break
+
+    #Tests for correctness & cout
+    correct_func = lambda x: (x.T @ (consts_mat / precision)).T
+    test_avg_corr(ptm_orig, ptm_opt, xfunc_uniform(num_weights), correct_func, num_tests, io)
+
+    correct_func_AND = lambda x: np.min(correct_func(x))
+    ptm_l2 = get_func_mat(np.bitwise_and, 2, 1)
+    test_avg_err(ptm_orig @ ptm_l2, ptm_opt @ ptm_l2, xfunc_uniform(num_weights), correct_func_AND, num_tests, io)
+
+    test_avg_corr(ptm_orig, ptm_opt, xfunc_3x3_img_windows(), correct_func, num_tests, io)
+    test_avg_err(ptm_orig @ ptm_l2, ptm_opt @ ptm_l2, xfunc_3x3_img_windows(), correct_func_AND, num_tests, io)
 
 def test_HMT():
     precision = 64
     num_tests = 1000
-    depth = np.log2(precision).astype(int)
+    depth = ilog2(precision)
     consts = np.array([10, 13, 1, 1, 1, 2, 7, 9])
     n = consts.size + depth
     f = HMT(consts, precision)
