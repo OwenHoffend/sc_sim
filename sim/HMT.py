@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from sim.PTM import *
 from sim.SEC_opt_macros import *
 from sim.circuits import mux_1
+from multiprocessing import Pool
 
 #Hardwired MUX tree generation for correlation analysis
 def HMT(consts, precision):
@@ -49,44 +50,85 @@ def HMT(consts, precision):
         return oq[0]
     return f
 
-def test_HMT_corr_opt():
+def get_random_HMT(num_weights, precision, k):
+    funcs = []
+    consts_mat = np.zeros((num_weights, k))
+    for i in range(k):
+        r = np.random.rand(num_weights)
+        consts = np.floor(precision * r / np.sum(r)).astype(int)
+        consts_mat[:, i] = consts
+        funcs.append(HMT(consts, precision))
+    return funcs, consts_mat
+
+def test_HMT_corr_opt(proc):
     """Generate a bunch of HMTs of various different sizes and evaluate the benefit obtained from SEC optimization"""
     #Run parameters
-    precision = 32
-    num_weights = 9
-    k = 2
+    precision = 8
+    num_weights = 4
+    k = 4
     num_tests = 10000
-    num_area_iters = 3
+    num_area_iters = 50
+    xfunc = xfunc_uniform
+    #good_threshold = 3
     io = IO_Params(ilog2(precision), num_weights, k)
     
-    for _ in range(num_area_iters):
-        funcs = []
-        consts_mat = np.zeros((num_weights, k))
-        for i in range(k):
-            r = np.random.rand(num_weights)
-            consts = np.floor(precision * r / np.sum(r)).astype(int)
-            consts_mat[:, i] = consts
-            funcs.append(HMT(consts, precision))
-        ptm_orig, ptm_opt = opt_max_multi(funcs, io)
+    ptm_orig, ptm_opt = None, None
+    #good_ones = []
+    #good_ptms = []
+    #ifactors = []
+    for ai in range(num_area_iters):
+        print("proc: {}, iter: {}".format(proc, ai))
 
-        orig_cost = espresso_get_SOP_area(ptm_orig, "hmt.in")
-        opt_cost = espresso_get_SOP_area(ptm_opt, "hmt.in")
+        funcs, consts_mat = get_random_HMT(num_weights, precision, k)
+        print(consts_mat)
+
+        ptm_orig, ptm_opt = opt_multi(funcs, io, opt_K_multi)
+        _, ptm_opt_area = opt_multi(funcs, io, opt_K_max_area_aware_multi)
+
+        #--- AREA COST ---
+        orig_cost = espresso_get_SOP_area(ptm_orig, "hmt{}.in".format(proc))
+        opt_cost = espresso_get_SOP_area(ptm_opt, "hmt{}.in".format(proc))
+        opt_cost_area = espresso_get_SOP_area(ptm_opt_area, "hmt{}.in".format(proc))
         print('orig cost: ', orig_cost)
         print('opt cost: ', opt_cost)
-        print(consts_mat)
-        if opt_cost / orig_cost < 2:
-            break
+        print('opt cost area: ', opt_cost_area)
+        #Select the ensemble min
+        costs = [opt_cost, opt_cost_area]
+        m_ind = np.argmin(costs)
+        opt_cost = costs[m_ind]
+        ptm_opt = [ptm_opt, ptm_opt_area][m_ind]
+        cost_ratio = opt_cost / orig_cost #Want this to be low
+        print("Cost ratio: ", cost_ratio)
 
-    #Tests for correctness & cout
-    correct_func = lambda x: (x.T @ (consts_mat / precision)).T
-    test_avg_corr(ptm_orig, ptm_opt, xfunc_uniform(num_weights), correct_func, num_tests, io)
+        #--- CORRECTNESS & OUTPUT CORRELATION --- 
+        correct_func = lambda x: (x.T @ (consts_mat / precision)).T
+        #test_avg_corr(ptm_orig, ptm_opt, xfunc_uniform(num_weights), num_tests, io, correct_funct=correct_func)
 
-    correct_func_AND = lambda x: np.min(correct_func(x))
-    ptm_l2 = get_func_mat(np.bitwise_and, 2, 1)
-    test_avg_err(ptm_orig @ ptm_l2, ptm_opt @ ptm_l2, xfunc_uniform(num_weights), correct_func_AND, num_tests, io)
+        cout_avg, cout_opt_avg = test_avg_corr(ptm_orig, ptm_opt, xfunc(num_weights), num_tests, io, correct_func=correct_func)
 
-    test_avg_corr(ptm_orig, ptm_opt, xfunc_3x3_img_windows(), correct_func, num_tests, io)
-    test_avg_err(ptm_orig @ ptm_l2, ptm_opt @ ptm_l2, xfunc_3x3_img_windows(), correct_func_AND, num_tests, io)
+
+        #--- OUTPUT ERROR TEST - RELU --- 
+        #   ptm_l2 = get_func_mat(lambda x, y: np.bitwise_and(x, np.bitwise_not(y)), 2, 1) #ReLU type subtraction between two layers
+        #   correct_func_RELU = lambda x: np.maximum(correct_func(x)[0] - correct_func(x)[1], 0)
+        #   c_err, c_err_opt = test_avg_err(ptm_orig @ ptm_l2, ptm_opt @ ptm_l2, xfunc(num_weights), correct_func_RELU, num_tests, io)
+        #   c_err_ratio = c_err / c_err_opt  #Want this to be high
+        #   improvement_factor = c_err_ratio / cost_ratio
+        #   print('orig err: ', c_err)
+        #   print('opt err: ', c_err_opt)
+        #   #print("Correlation error ratio:", c_err_ratio)
+        #   print("Improvement factor: ", improvement_factor)
+
+        #   if improvement_factor >= good_threshold:
+        #       good_ones.append(consts_mat)
+        #       good_ptms.append(ptm_opt)
+        #       ifactors.append(improvement_factor)
+    #np.save("./HMT_results/results{}.npy".format(proc), np.array(good_ones))
+    #np.save("./HMT_results/ptms{}.npy".format(proc), np.array(good_ptms))
+    #np.save("./HMT_results/ifactors{}.npy".format(proc), np.array(ifactors))
+
+def test_HMT_corr_opt_mp(f):
+        with Pool(16) as p:
+            p.map(f, list(range(16)))
 
 def test_HMT():
     precision = 64

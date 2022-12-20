@@ -2,6 +2,8 @@ import numpy as np
 from sim.bitstreams import *
 from sim.SEC import *
 from sim.espresso import *
+from sim.HMT import *
+from sim.SEC_opt_macros import *
 import matplotlib.pyplot as plt
 
 def test_SCC_inv():
@@ -116,6 +118,26 @@ def test_espresso_2output():
     )
     cost = espresso_get_SOP_area(ptm, "2output_test.in", do_print=True)
     print(cost)
+
+def test_espresso_HMT():
+    func1 = HMT(np.array([3, 5]), 8)
+    func2 = HMT(np.array([5, 3]), 8)
+    io = IO_Params(ilog2(8), 2, 2)
+    ptm, ptm_opt = opt_multi([func1, func2], io, opt_K_max_area_aware_multi)
+    print(espresso_get_SOP_area(ptm, "hmt.in"))
+    print(espresso_get_SOP_area(ptm_opt, "hmt.in"))
+    test_avg_corr(ptm, ptm_opt, xfunc_uniform(2), 10, io)
+
+def test_espresso_HMT_multi():
+    Ks = [
+        np.array([[False, True, True, True]]),
+        np.array([[False, False, True, True]]),
+        np.array([[False, False, False, True]]),
+        np.array([[False, False, True, True]])
+    ]
+    Ks_opt = opt_K_max_area_aware_multi(Ks)
+    print(Ks_opt)
+    print(test_Kmat_hamming_dist(Ks_opt))
 
 def test_opt_area_SECO():
     n = 3

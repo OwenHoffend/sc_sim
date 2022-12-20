@@ -5,6 +5,7 @@ from sim.PTM import *
 from sim.SEC import *
 from sim.circuits import mux_1, maj_1, robert_cross
 from cv.img_io import *
+from sim.SEC_opt_macros import *
 import matplotlib.pyplot as plt
 
 def robert_cross_r(x11, x22, x12, x21, s):
@@ -90,6 +91,7 @@ def test_gauss_blur_4x4():
     #gb4_ptm = get_func_mat(gauss_blur_4x4, 20, 4)
     #np.save("gb4_ptm.npy", gb4_ptm)
 
+    print("Get opt ptm")
     rced_ptm = get_func_mat(robert_cross_r, 5, 1)
     rced_ptm = reduce_func_mat(rced_ptm, 4, 0.5)
     A = gb4_ptm @ B_mat(4)
@@ -100,21 +102,31 @@ def test_gauss_blur_4x4():
         K_opt = opt_K_max(K)
         Ks.append(K)
         Ks_opt.append(K_opt)
+
+    for i in range(4):
+        weights = np.sum(Ks[i], axis=1)
+        print(np.unique(weights, return_counts=True))
+
+    Ks_opt_area_aware = opt_K_max_area_aware_multi(Ks)
     gb4_ptm_opt = Ks_to_Mf(Ks_opt)
+    gb4_ptm_opt_a = Ks_to_Mf(Ks_opt_area_aware)
 
-    full_ptm = gb4_ptm @ rced_ptm 
-    full_ptm_opt = gb4_ptm_opt @ rced_ptm
+    print(compare_Kmat_hamming_dist(Ks, Ks_opt))
+    print(compare_Kmat_hamming_dist(Ks, Ks_opt_area_aware))
 
-    #print(espresso_get_SOP_area(np.expand_dims(Ks[0].T.reshape(2**20), axis=1), "gb4.in", is_A=True))
-    #print(espresso_get_SOP_area(np.expand_dims(Ks_opt[0].T.reshape(2**20), axis=1), "gb4.in", is_A=True))
+    #print(espresso_get_SOP_area(Ks_to_A(Ks), "gb4.in", is_A=True))
+    #print(espresso_get_SOP_area(Ks_to_A(Ks_opt), "gb4.in", is_A=True))
+    print(espresso_get_SOP_area(Ks_to_A(Ks_opt_area_aware), "gb4.in", is_A=True))
 
     avg_corr = np.zeros((4,4))
     avg_corr_opt = np.zeros((4,4))
+    avg_corr_opt_a = np.zeros((4,4))
     B4 = B_mat(4)
     gk = np.array([0.25, 0.5, 0.25])
 
     unopt_err = []
     opt_err = []
+    opt_a_err = []
     img = load_img("./img/cameraman.png", gs=True)
     v0 = get_vin_mc0(np.array([0.5, 0.5, 0.5, 0.5]))
     
@@ -125,6 +137,7 @@ def test_gauss_blur_4x4():
     #for i in range(252):
     #    print(i)
     #    for j in range(252):
+        print(i)
         px = np.random.rand(4, 4)
         #px = img[i:i+4, j:j+4] / 256
 
@@ -138,11 +151,14 @@ def test_gauss_blur_4x4():
         v_in = np.kron(v0, get_vin_mc1(px.reshape(16, )))
         result_ptv = gb4_ptm.T @ v_in
         result_ptv_opt = gb4_ptm_opt.T @ v_in
+        result_ptv_a = gb4_ptm_opt_a.T @ v_in
         rced_out_ptv = rced_ptm.T @ result_ptv
         rced_out_ptv_opt = rced_ptm.T @ result_ptv_opt
+        rced_out_ptv_opt_a = rced_ptm.T @ result_ptv_a
 
         unopt_err.append(np.abs(rced_out_ptv[1] - rced_correct))
         opt_err.append(np.abs(rced_out_ptv_opt[1] - rced_correct))
+        opt_a_err.append(np.abs(rced_out_ptv_opt_a[1] - rced_correct))
         #correct_img[i, j] = rced_correct
         #out_img[i, j] = rced_out_ptv[1]
         #out_img_opt[i, j] = rced_out_ptv_opt[1]
@@ -153,17 +169,20 @@ def test_gauss_blur_4x4():
 
         cout = get_corr_mat_paper(result_ptv)
         cout_opt = get_corr_mat_paper(result_ptv_opt)
+        cout_opt_a = get_corr_mat_paper(result_ptv_a)
         avg_corr += cout
         avg_corr_opt += cout_opt
+        avg_corr_opt_a += cout_opt_a
 
     avg_corr /= num_tests
     avg_corr_opt /= num_tests
+    avg_corr_opt_a /= num_tests
     print(avg_corr)
     print(avg_corr_opt)
+    print(avg_corr_opt_a)
     print(np.mean(unopt_err))
-    print(np.std(unopt_err))
     print(np.mean(opt_err))
-    print(np.std(opt_err))
+    print(np.mean(opt_a_err))
 
 def test_gauss_blur_img():
     #num_tests = 252 ** 2

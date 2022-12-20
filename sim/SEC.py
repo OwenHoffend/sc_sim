@@ -4,7 +4,10 @@ import copy
 from sim.PTM import *
 from sim.circuits_obj import *
 from scipy.special import comb
+from symbolic_manip import mat_to_latex
 from sim.espresso import espresso_get_SOP_area
+
+from queue import PriorityQueue
 
 def get_SEC_class(func, nc, nv, k, consts):
     #Expects the circuit function's inputs to be ordered with all constants first
@@ -84,12 +87,88 @@ def SEC_uniform_err(ptm, ptv_func, correct_func, m=1000):
 
 def opt_K_max(K):
     _, tlen = K.shape
-    K_sum = np.sum(K, axis=1)
+    K_sum = np.sum(K, axis=1).astype(np.int32)
     return np.stack([np.pad(np.ones(t, dtype=np.bool_), (0, tlen-t), 'constant') for t in K_sum])
+
+def opt_K_multi(Ks):
+    return tuple(opt_K_max(Ks[i]) for i in range(len(Ks)))
 
 def opt_K_min(K):
     K_max = opt_K_max(K)
     return np.flip(K_max, axis=1)
+
+def opt_K_max_area_aware(K1, K2):
+    """Optimize a pair of SE Matrices but change the fewest number of entries"""
+    K1, K2 = copy.copy(K1), copy.copy(K2)
+    nv2, nc2 = K1.shape
+    for i in range(nv2):
+        k1, k2 = K1[i, :], K2[i, :]
+        reloc_src = list(np.where(np.bitwise_and(k1, np.bitwise_not(k2)))[0])
+        reloc_dest = list(np.where(np.bitwise_and(np.bitwise_not(k1), k2))[0])
+        while len(reloc_src) and len(reloc_dest):
+            K1[i, reloc_src.pop(0)] = 0
+            K1[i, reloc_dest.pop(0)] = 1
+    return K1, K2
+
+def opt_K_max_area_aware_v(K1, K2):
+    """Variant of the other opt_K_max_area_aware that tries to relocate 1s 
+    to locations that change the minterms the least"""
+    nv2, nc2 = K1.shape
+    for i in range(nv2):
+        k1, k2 = K1[i, :], K2[i, :]
+        reloc_src = list(np.where(np.bitwise_and(k1, np.bitwise_not(k2)))[0])
+        reloc_dest = list(np.where(np.bitwise_and(np.bitwise_not(k1), k2))[0])
+        while len(reloc_src) and len(reloc_dest):
+            j = reloc_src.pop(0)
+            K1[i, j] = 0
+            min_cost = np.inf
+            min_cost_idx = reloc_dest[0]
+            for idx, k in enumerate(reloc_dest):
+                cost = j ^ k
+                if cost < min_cost:
+                    min_cost_idx = idx
+                    min_cost = cost
+            k = reloc_dest.pop(min_cost_idx)
+            K1[i, k] = 1
+            #find the best location to place the 1 based on minimum hamming distance with available locations
+    return K1, K2
+
+def opt_K_max_area_aware_multi(Ks):
+    """Optimize any number of SE matrices using opt_K_max_area_aware"""
+    Ks = copy.deepcopy(Ks)
+    k = len(Ks)
+    nv2, nc2 = Ks[0].shape
+
+    #First two are a special case
+    K1_opt, K2_opt = opt_K_max_area_aware(Ks[0], Ks[1])
+    Ks_opt = [K1_opt, K2_opt]
+    sum_Ks_opt = K1_opt.astype(np.int16) + K2_opt.astype(np.int16)
+
+    #Do the remaining
+    for i in range(2, k): #variable
+        print("output: ", i)
+        Ki = Ks[i]
+        for jv in range(nv2): #row
+            #print("row: ", jv)
+            pq_src = PriorityQueue()
+            pq_dest = PriorityQueue()
+            for jc in range(nc2): #col
+                Sj = sum_Ks_opt[jv, jc]
+                if Ki[jv, jc]: #Is potential src. 
+                    if Sj != i: #Don't move the 1 if the alignment is already best
+                        pq_src.put((Sj, (jc, Sj))) #lower values of sum are better sources
+                elif Sj != 0: #Is potential dest
+                    pq_dest.put((i-Sj, (jc, Sj))) #higher values of sum are better dests
+            while not pq_src.empty() and not pq_dest.empty():
+                pq_dest_top = pq_dest.get()[1]
+                pq_dest_Sj = pq_dest_top[1]
+                pq_src_Sj = pq_src.queue[0][1][1] #peek at the top of the pq
+                if pq_dest_Sj > pq_src_Sj: #moving the 1 needs to actually improve the alignments
+                    Ki[jv, pq_src.get()[1][0]] = 0
+                    Ki[jv, pq_dest_top[0]] = 1
+        sum_Ks_opt += Ki
+        Ks_opt.append(Ki)
+    return Ks_opt
 
 def scc(px, py, pxy, N):
     delta = pxy - px*py
@@ -440,10 +519,17 @@ def Ks_to_Mf(Ks):
     nc, nv = np.log2(Ks[0].shape)
     n = int(nv + nc)
     k = len(Ks) #Ks is a list of K matrices
+    A = Ks_to_A(Ks)
+    return A_to_Mf(A, n, k)
+
+def Ks_to_A(Ks):
+    nc, nv = np.log2(Ks[0].shape)
+    n = int(nv + nc)
+    k = len(Ks) #Ks is a list of K matrices
     A = np.zeros((2**n, k), dtype=np.bool_)
     for i, K in enumerate(Ks):
         A[:, i] = K.T.reshape(2**n)
-    return A_to_Mf(A, n, k)
+    return A
 
 def get_K_2outputs(cir, o1_idx=0, o2_idx=1):
     Mf = cir.ptm()

@@ -8,6 +8,31 @@ import matplotlib.pyplot as plt
 from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import mean_squared_error as mse
 
+SNRs = np.array([13.58242111, 16.63124714, 16.96363117, 17.16573756, 17.57522019, 18.10636445, 18.07254644, 18.04833208])
+FIR_area = np.array([379.581999, 443.954, 492.1, 550.354, 572.698001, 597.436001, 614.194, 632.814])
+SSIMs = np.array([0.78481377, 0.82865676, 0.88092842, 0.92212229, 0.96502617, 0.98865833, 0.99773276, 1.])
+MED_area = np.array([272.384003, 298.984003, 318.668003, 326.382003, 350.056002, 363.622001, 367.346002, 388.892003])
+
+def area_accuracy_ratio():
+
+    range_min = 0.4
+    range_max = 0.6
+
+    #FIR Filter
+    norm_SNRs = 1 - (SNRs / SNRs[7]) #Lower is better
+    norm_FIR_area = FIR_area / FIR_area[7] #Lower is better
+    for i in np.linspace(range_min, range_max, 10):
+        print(i)
+        plt.plot(i * norm_SNRs + (1 - i) * norm_FIR_area)
+    plt.show()
+
+    #Median Filter
+    norm_SSIMs = 1 - (SSIMs/ SSIMs[7]) #Lower is better
+    norm_MED_area = MED_area / MED_area[7] #Lower is better
+    for i in np.linspace(range_min, range_max, 10):
+        plt.plot(i * norm_SSIMs + (1 - i) * norm_MED_area)
+    plt.show()
+
 def mmc8(*c, k=0, v=[False for _ in range(8)]):
     z = False
     for i in range(8):
@@ -454,3 +479,44 @@ def tims_analysis_pt2():
         #disp_img(curr_expected_output[3]*256)
         #disp_img(curr_expected_output[7]*256)
         #np.save("../tim_pcc_run2/results/img{}_expected.npy".format(img_idx), curr_expected_output)
+
+def tim_pcc_analysis_pt3():
+    """Some SSIM results for edge detection images"""
+    img_names =  [
+        "rice", 
+        "coins", 
+        "pillsetc", 
+        "coloredChips", 
+        "tape", 
+        "lighthouse", 
+        "hands1", 
+        "cameraman", 
+        "circuit", 
+        "tire"
+    ]
+    ssims = np.empty((10, 8))
+    for idx, name in enumerate(img_names):
+        img = np.load("../tim_pcc_run3/edge_data/n8_k0-7_{}_VDC_c0.npy".format(name))
+        for k in range(8):
+            img_k_correct = img[0, k, :, :]
+            img_k_sim = img[1, k, :, :]
+            ssims[idx, k] = ssim(
+                img_k_correct,
+                img_k_sim,
+                data_range=img.max() - img.min(),
+                gaussian_weights=True,
+                win_size=11,
+                K1=0.01,
+                K2=0.03
+            )
+        plt.plot(ssims[idx, :], label=name)
+    np.save("../tim_pcc_run3/data.npy", ssims)
+    plt.plot(np.mean(ssims, axis=0), label="Average", color='k', lw=2)
+    plt.title("SSIM vs k for Edge Detection")
+    plt.ylabel("SSIM")
+    plt.xlabel("k")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    
