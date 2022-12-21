@@ -61,24 +61,23 @@ def xfunc_3x3_img_windows(imgs=None): #For modeling image kernels
     def get_window():
         img = imgs[np.random.randint(num_imgs)]
         h, w = img.shape
-        cy = np.random.randint(1, h-1)
-        cx = np.random.randint(1, w-1)
+        cy = np.random.randint(1, h-2)
+        cx = np.random.randint(1, w-2)
         return img[cy-1:cy+2, cx-1:cx+2].reshape(9)
     return get_window
 
-#Top-level functions that you'd probably actually want to call
-#def opt_two(func1, func2, io, optfunc):
-#    assert io.k == 2
-#    A = np.zeros((io.n2, 2), dtype=np.bool_)
-#    A[:, 0] = get_func_mat(func1, io.n, 1)[:, 1]
-#    A[:, 1] = get_func_mat(func2, io.n, 1)[:, 1]
-#    ptm = A_to_Mf(A, io.n, 2)
-#    K1 = A[:, 0].reshape(io.nc2, io.nv2).T
-#    K2 = A[:, 1].reshape(io.nc2, io.nv2).T
-#    K1_opt, K2_opt = optfunc(K1, K2)
-#    #print("Novs: ", np.sum(np.bitwise_and(K1_opt, K2_opt)))
-#    ptm_opt = Ks_to_Mf([K1_opt, K2_opt])
-#    return ptm, ptm_opt
+def xfunc_2x2_img_windows(imgs=None): #For modeling image kernels
+    if imgs is None: #Default is to load the 10 MATLAB test images
+        imgs = list(np.load("../tim_pcc/test_images.npy", allow_pickle=True))
+
+    num_imgs = len(imgs)
+    def get_window():
+        img = imgs[np.random.randint(num_imgs)]
+        h, w = img.shape
+        cy = np.random.randint(0, h-2) #center is upper left corner
+        cx = np.random.randint(0, w-2)
+        return img[cy:cy+2, cx:cx+2].reshape(4)
+    return get_window
 
 def opt_multi(funcs, io, optfunc):
     Ks = []
@@ -102,8 +101,8 @@ def test_avg_corr(ptm, ptm_opt, xfunc, num_tests, io,  correct_func=None):
         cout_opt_avg += get_corr_mat_paper(vout_opt)
     cout_avg /= num_tests
     cout_opt_avg /= num_tests
-    print(cout_avg)
-    print(cout_opt_avg)
+    #print(cout_avg)
+    #print(cout_opt_avg)
     return cout_avg, cout_opt_avg
 
 def test_avg_err(ptm, ptm_opt, xfunc, correct_func, num_tests, io):

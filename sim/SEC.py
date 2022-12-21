@@ -146,7 +146,7 @@ def opt_K_max_area_aware_multi(Ks):
 
     #Do the remaining
     for i in range(2, k): #variable
-        print("output: ", i)
+        #print("output: ", i)
         Ki = Ks[i]
         for jv in range(nv2): #row
             #print("row: ", jv)
