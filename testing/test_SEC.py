@@ -19,7 +19,7 @@ def test_SCC_inv():
 def test_K_to_Mf():
     cir = PARALLEL_ADD(2, maj=True)
     Mf_orig = cir.ptm()
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
     Mf_test = Ks_to_Mf([K1, K2])
     assert np.all(np.isclose(Mf_orig, Mf_test))
 
@@ -65,7 +65,7 @@ def test_SEC_parallel_const_mul():
     cir = PARALLEL_CONST_MUL(consts, 2, bipolar=True)
     Mf_pre = cir.ptm()
     print(Mf_pre)
-    K1_pre, K2_pre = get_K_2outputs(cir)
+    K1_pre, K2_pre = get_K_2outputs_old(cir)
     K1_opt, K2_opt = opt_K_max(K1_pre), opt_K_max(K2_pre)
     Mf_opt = Ks_to_Mf([K1_opt, K2_opt])
     pre_corr = SEC_uniform_SCC_score(K1_pre, K2_pre, ptv_gen)[0,1]
@@ -78,7 +78,7 @@ def test_SEC_parallel_const_mul():
 def test_espresso():
     cir = PARALLEL_MAC_2([0.125, 0.875, 0.875, 0.125], 4, bipolar=False)
     #cir = PARALLEL_ADD(2)
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
 
     inames = ['x1', 'x2', 'x3', 'x4', 'c1', 'c2', 'c3', 's']
     onames = ['z1', 'z2']
@@ -142,7 +142,7 @@ def test_espresso_HMT_multi():
 def test_opt_area_SECO():
     n = 3
     cir = PCC_k(n, 2)
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
     K1_opt1, K2_opt1 = opt_K_max(K1), opt_K_max(K2)
     K1_opt0, K2_opt0 = opt_K_zero(K1, K2)
     unopt_ptm = Ks_to_Mf([K1_opt0, K2_opt0])
@@ -171,7 +171,7 @@ def heatmap(xs, ys, zs, inv_colormap=True):
 def plot_heatmap_SEC_opt_cases():
     """Roll the top/bottom K matrix to produce a heat map of 2^nc x 2^nc entries. Can compare both area and SCC"""
     cir = PARALLEL_MAC_2([0.125, 0.875, 0.875, 0.125], 4, bipolar=False)
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
     K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
     original_area = espresso_get_SOP_area(cir.ptm(), "cir.in")
     num_opt = 2 ** cir.nc
@@ -244,12 +244,12 @@ def test_parallel_MAC_SEC_plots():
 
         #Get circuits
         mac_mux = PARALLEL_MAC_2(consts, max_precision, bipolar=use_bipolar)
-        K1_mux, K2_mux = get_K_2outputs(mac_mux)
+        K1_mux, K2_mux = get_K_2outputs_old(mac_mux)
         K1_opt, K2_opt = opt_K_max(K1_mux), opt_K_max(K2_mux) 
         mac_maj = PARALLEL_MAC_2(consts, max_precision, bipolar=use_bipolar, maj=True)
-        K1_maj, K2_maj = get_K_2outputs(mac_maj)
+        K1_maj, K2_maj = get_K_2outputs_old(mac_maj)
         mac_sorted = PARALLEL_MAC_2(consts_sorted, max_precision, bipolar=use_bipolar)
-        K1_sorted, K2_sorted = get_K_2outputs(mac_sorted)
+        K1_sorted, K2_sorted = get_K_2outputs_old(mac_sorted)
         K1_sorted_opt, K2_sorted_opt = opt_K_max(K1_sorted), opt_K_max(K2_sorted)
 
         actual_precision = mac_mux.actual_precision

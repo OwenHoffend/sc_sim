@@ -1,4 +1,8 @@
 import logging
+logging.basicConfig(encoding='utf-8', level=logging.DEBUG, handlers=[
+    logging.FileHandler('HMT_results/hmt_logs.log'),
+    logging.StreamHandler()
+])
 import numpy as np
 from sim.HMT import *
 from sim.PTM import *
@@ -6,7 +10,6 @@ from sim.SEC_opt_macros import *
 from multiprocessing import Pool
 
 def test_HMT_corr_opt_sweep():
-    logging.basicConfig(filename='HMT_results/hmt_logs.log', encoding='utf-8', level=logging.DEBUG)
     funcs = [False, True] #two different funcs, but one needs to switch between 2x2 and 3x3 windows
     ps = [32, ]
     ks = [2, 3, 4]
@@ -22,7 +25,6 @@ def test_HMT_corr_opt_sweep():
                     else:
                         xfunc = xfunc_uniform(nv)
                     s = "func: {}, p: {}, k: {}, nv: {}".format(func, p, k, nv)
-                    print(s)
                     logging.info(s)
                     results[idx, :] = test_HMT_corr_opt(nv, k, p, xfunc)
     np.save("HMT_results/hmt_area_opt.npy", results)
@@ -89,16 +91,16 @@ def test_HMT_corr_opt(num_weights, k, p, xfunc):
     orig_cost /= num_area_iters
     opt_cost /= num_area_iters
     opt_cost_area /= num_area_iters
-    print('orig cost: ', orig_cost)
-    print('opt cost: ', opt_cost)
-    print('opt cost area: ', opt_cost_area)
+    logging.info('orig cost: {}'.format(orig_cost))
+    logging.info('opt cost: {}'.format(opt_cost))
+    logging.info('opt cost area: {}'.format(opt_cost_area))
 
     orig_corr /= num_area_iters
     opt_corr /= num_area_iters
     opt_corr_area /= num_area_iters
-    print('orig corr', orig_corr)
-    print('opt corr', opt_corr)
-    print('opt corr area', opt_corr_area)
+    logging.info('orig corr: {}'.format(orig_corr))
+    logging.info('opt corr: {}'.format(opt_corr))
+    logging.info('opt corr area: {}'.format(opt_corr_area))
     return np.array([orig_cost, opt_cost, opt_cost_area, orig_corr, opt_corr, opt_corr_area])
 
 def test_HMT_corr_opt_mp(f):

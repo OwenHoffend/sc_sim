@@ -55,7 +55,7 @@ def test_parallel_AND():
     #Share one const 0.5 input between to AND gates
     mapping = [0, 2, 1, 2]
     cir = SeriesCircuit([BUS(3, 4, mapping, nc=1), ParallelCircuit([AND(), AND()])])
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
     K1_opt, K2_opt = opt_K_zero(K1, K2)
     print("Area before: ", espresso_get_SOP_area(Ks_to_Mf([K1_opt, K2_opt]), "test.in", do_print=True))
     best_ptm = opt_area_SECO(K1_opt, K2_opt, cache_file="test_parallel_AND.json", simulated_annealing=True)
@@ -81,7 +81,7 @@ def test_parallel_PCC():
     n = 5
     cir = PCC_k(n, 2)
     ptm = cir.ptm()
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
     K1_opt1, K2_opt1 = opt_K_max(K1), opt_K_max(K2)
     K2_opt_n1 = opt_K_min(K2)
     #K1_opt0 = K1_opt1
@@ -188,7 +188,7 @@ def test_img_seg_circ():
     print(espresso_get_SOP_area(ptm, 'test.in'))
 
     #0.5 ish correlation, bad area
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
     #print("Number in SEC K1: ", get_num_in_SEC(K1))
     #print("Number in SEC K2: ", get_num_in_SEC(K2))
     K1_opt, K2_opt = opt_K_zero(K1, K2)

@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from sim.SEC import Ks_to_Mf, get_K_2outputs, opt_K_max
+from sim.SEC import Ks_to_Mf, get_K_2outputs_old, opt_K_max
 from sim.bitstreams import *
 from sim.circuits import *
 from sim.PTM import *
@@ -74,7 +74,7 @@ def test_SEC_opt_2x2_kernel(imgs=None):
     mac_ptm_maj = get_func_mat()
     
     pre_ptm = mac_ptm @ relu
-    K1, K2 = get_K_2outputs(cir)
+    K1, K2 = get_K_2outputs_old(cir)
     K1_opt, K2_opt = opt_K_max(K1), opt_K_max(K2)
     opt_ptm = Ks_to_Mf([K1_opt, K2_opt])
 

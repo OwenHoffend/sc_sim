@@ -531,7 +531,14 @@ def Ks_to_A(Ks):
         A[:, i] = K.T.reshape(2**n)
     return A
 
-def get_K_2outputs(cir, o1_idx=0, o2_idx=1):
+def get_Ks_from_ptm(Mf, io):
+    A = Mf @ B_mat(io.k) #2**(nc+nv) x k
+    Ks = []
+    for i in range(io.k):
+        Ks.append(A[:, i].reshape(2**io.nc, 2**io.nv).T)
+    return Ks
+
+def get_K_2outputs_old(cir, o1_idx=0, o2_idx=1, is_ptm=False):
     Mf = cir.ptm()
     A = Mf @ B_mat(cir.k) #2**(nc+nv) x k
     K1 = A[:, o1_idx].reshape(2**cir.nc, 2**cir.nv).T
@@ -547,7 +554,7 @@ def get_K(cir, o1_idx=0):
 def max_corr_2outputs_restricted(cir, o1_idx=0, o2_idx=1):
     #Directly compute a circuit design that maximizes the output correlation between two outputs
     #Restrict the constant inputs to be the value "0.5" only
-    K1, K2 = get_K_2outputs(cir, o1_idx, o2_idx)
+    K1, K2 = get_K_2outputs_old(cir, o1_idx, o2_idx)
     K1_max = opt_K_max(K1)
     K2_max = opt_K_max(K2)
     K2_min = opt_K_min(K2)
