@@ -3,6 +3,7 @@ from pstats import Stats
 
 #Test script imports
 from testing.corr_preservation_tests import *
+from testing.pcc_analysis_paper import pcc_analysis_paper
 from testing.self_learn_tests import self_learn_tests
 from testing.symbolic_manip_tests import *
 from testing.variance_analysis_tests import *
@@ -17,6 +18,10 @@ from testing.test_ptm_perturbations import *
 from testing.gauss_blur_ed import *
 from testing.kernel_2x2 import *
 from testing.tim_pcc_analysis import *
+from testing.pcc_analysis_paper import *
+from testing.test_HMT import *
+from testing.test_canonical_max_scc import *
+from sim.verilog_gen import *
 from plotting import plot_random
 
 from sim.circuits import *
@@ -38,7 +43,7 @@ def profile(func):
 
 def main():
     """THIS SHOULD BE THE MAIN ENTRY POINT FOR EVERYTHING!"""
-    tims_analysis()
+    test_larger_ptm_to_verilog()
 
 if __name__ == "__main__":
-    main()
+    main() 

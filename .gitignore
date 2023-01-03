@@ -12,6 +12,10 @@ __pycache__/
 # out
 *.out
 
+# verilog files
+*.v
+*.sv
+
 # Distribution / packaging
 .Python
 build/
