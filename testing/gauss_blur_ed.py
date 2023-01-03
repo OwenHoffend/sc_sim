@@ -1,4 +1,3 @@
-from json import load
 import numpy as np
 from sim.bitstreams import *
 from sim.PTM import *

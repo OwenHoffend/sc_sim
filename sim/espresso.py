@@ -38,7 +38,7 @@ def espresso_get_cost(fn):
     print(cost)
     return cost
 
-def espresso_get_SOP_area(cir_spec, fn, inames=None, onames=None, do_print=False, is_A=False):
+def espresso_opt(cir_spec, fn, inames=None, onames=None, is_A=False):
     if is_A:
         A_to_espresso_input(cir_spec, fn, inames=inames, onames=onames)
     else:
@@ -48,6 +48,10 @@ def espresso_get_SOP_area(cir_spec, fn, inames=None, onames=None, do_print=False
 
     (output, err) = p.communicate()
     p_status = p.wait()
+    return output
+
+def espresso_get_SOP_area(cir_spec, fn, inames=None, onames=None, do_print=False, is_A=False):
+    output = espresso_opt(cir_spec, fn, inames, onames, is_A)
     cost = 0
     for line in output.decode('utf-8').split('\n'):
         if do_print:
@@ -61,3 +65,12 @@ def espresso_get_SOP_area(cir_spec, fn, inames=None, onames=None, do_print=False
     if cost == 0 and is_A: #Check for errors due to IPC
         assert np.all(cir_spec == 0)
     return cost
+
+def espresso_get_opt_file(cir_spec, ifn, ofn, inames=None, onames=None, do_print=False, is_A=False):
+    output = espresso_opt(cir_spec, ifn, inames, onames, is_A)
+
+    with open(ofn, 'w') as outfile: 
+        for line in output.decode('utf-8').split('\n'):
+            if do_print:
+                print(line)
+            outfile.write(line)
