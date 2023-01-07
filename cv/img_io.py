@@ -16,7 +16,7 @@ def cifar_unpickle(file): #For CIFAR-10
         dict = pickle.load(fo, encoding='bytes')
     return dict[b'data']
 
-def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, inv=False, pack=True, scale=True):
+def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, inv=False, pack=True, scale=True, lfsr_sz=None):
     """Convert a single image chnanel into an stochastic bitstream of the specified length.
     bs_gen_func is a bitstream generating function that takes in n (number of bits) and p, 
     the desired probability. If correlated is True, use the same RNG for all pixels"""
@@ -29,9 +29,9 @@ def img_to_bs(img_channel, bs_gen_func, bs_len=255, correlated=True, inv=False, 
     for i in range(height): #Populate the bitstream array
         for j in range(width):
             if scale:
-                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]) / 255.0, keep_rng=correlated, inv=inv, pack=pack)
+                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]) / 255.0, keep_rng=correlated, inv=inv, pack=pack, lfsr_sz=lfsr_sz)
             else:
-                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]), keep_rng=correlated, inv=inv, pack=pack)
+                bs[i][j] = bs_gen_func(bs_len, float(img_channel[i][j]), keep_rng=correlated, inv=inv, pack=pack, lfsr_sz=lfsr_sz)
     return bs
 
 def bs_to_img(bs, bs_mean_func, scaling=1):

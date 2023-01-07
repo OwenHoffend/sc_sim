@@ -25,21 +25,15 @@ def test_ptm_to_tb():
     ptm_to_verilog_tb(FA_ptm, "FA")
 
 def test_larger_ptm_to_verilog():
-    gb4_ptm = np.load("gb4_ptm.npy")
-    ptm_to_verilog_tb(gb4_ptm, "gb4") #Already did this one
+    #gb4_ptm = np.load("gb4_ptm.npy")
+    #ptm_to_verilog_tb(gb4_ptm, "gb4") #Already did this one
+    #gb4_opt_ptm = np.load("gb4_opt_ptm.npy")
+    #ptm_to_verilog_tb(gb4_opt_ptm, "gb4_opt")
 
-    A = gb4_ptm @ B_mat(4)
-    Ks = []
-    Ks_opt = []
-    for i in range(4):
-        K = A[:, i].reshape(2**4, 2**16).T
-        K_opt = opt_K_max(K)
-        Ks.append(K)
-        Ks_opt.append(K_opt)
-    gb4_ptm_opt = Ks_to_Mf(Ks_opt)
-    np.save("gb4_opt_ptm.npy", gb4_ptm_opt)
-    ptm_to_verilog_tb(gb4_ptm_opt, "gb4_opt")
+    gb4_opt_a_ptm = np.load("gb4_opt_a_ptm.npy")
+    ptm_to_verilog_tb(gb4_opt_a_ptm, "gb4_opt_a")
 
 def test_espresso_out_to_verilog():
-    espresso_out_to_verilog("gb4.out", "gb4")
-    espresso_out_to_verilog("gb4_opt.out", "gb4_opt")
+    #espresso_out_to_verilog("gb4.out", "gb4")
+    #espresso_out_to_verilog("gb4_opt.out", "gb4_opt")
+    espresso_out_to_verilog("gb4_opt_a.out", "gb4_opt_a")

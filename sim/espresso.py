@@ -66,6 +66,20 @@ def espresso_get_SOP_area(cir_spec, fn, inames=None, onames=None, do_print=False
         assert np.all(cir_spec == 0)
     return cost
 
+def espresso_get_SOP_area_from_file(ifn, do_print=True):
+    cost = 0
+    with open(ifn) as infile:
+        for line in infile.readlines():
+            if do_print:
+                print(line)
+            if not line.startswith('.'):
+                line_ = line.split(' ')[0]
+                cost += line_.count('1')
+                cost += line_.count('0')
+            elif line.startswith('.p'):
+                cost += int(line.split(' ')[1])
+        return cost
+
 def espresso_get_opt_file(cir_spec, ifn, ofn, inames=None, onames=None, do_print=False, is_A=False):
     output = espresso_opt(cir_spec, ifn, inames, onames, is_A)
 

@@ -67,7 +67,7 @@ class SC_RNG:
             return np.bitwise_not(self.lfsr) & mask
         return self.lfsr
 
-    def bs_uniform(self, n, p, keep_rng=True, inv=False, pack=True):
+    def bs_uniform(self, n, p, keep_rng=True, inv=False, pack=True, lfsr_sz=None):
         """Return a numpy array containing a unipolar stochastic bistream
             with value p based on n numbers drawn from the uniform random distribution on [0, 1).
             A mathematically equivalent alternative to bs_bernoulli. 
@@ -82,9 +82,10 @@ class SC_RNG:
             return np.packbits(result)
         return result
 
-    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, init_state=None, pack=True, add_zero_state=False): #Warning: when keep_rng=False, runtime is very slow 
+    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, init_state=None, pack=True, add_zero_state=False, lfsr_sz=None): #Warning: when keep_rng=False, runtime is very slow 
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
-        lfsr_sz = int(np.ceil(np.log2(n)))
+        if lfsr_sz is None:
+            lfsr_sz = int(np.ceil(np.log2(n)))
         if lfsr_sz < 4: 
             raise ValueError("LFSR Size is too small")
         lfsr_run = self._run_lfsr(n, lfsr_sz, keep_rng=keep_rng, inv=inv, save_init=save_init,

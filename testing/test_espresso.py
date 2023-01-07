@@ -49,7 +49,7 @@ def test_espresso_2output():
     print(cost)
 
 def test_espresso_get_opt_file():
-    gb4_opt_ptm = np.load("gb4_opt_ptm.npy")
-    espresso_get_opt_file(gb4_opt_ptm, "gb4_opt.in", "gb4_opt.out")
+    gb4_opt_a_ptm = np.load("gb4_opt_a_ptm.npy")
+    espresso_get_opt_file(gb4_opt_a_ptm, "gb4_opt_a.in", "gb4_opt_a.out")
 
 

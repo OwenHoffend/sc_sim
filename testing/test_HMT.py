@@ -7,6 +7,8 @@ import numpy as np
 from sim.HMT import *
 from sim.PTM import *
 from sim.SEC_opt_macros import *
+from sim.espresso import espresso_get_opt_file
+from sim.verilog_gen import espresso_out_to_verilog, ptm_to_verilog_tb
 from multiprocessing import Pool
 
 def test_HMT_corr_opt_sweep():
@@ -144,3 +146,37 @@ def test_espresso_HMT_multi():
     Ks_opt = opt_K_max_area_aware_multi(Ks)
     print(Ks_opt)
     print(test_Kmat_hamming_dist(Ks_opt))
+
+def test_synopsys_HMT():
+    #hmt1
+    f1 = HMT(np.array([5, 1, 3, 4, 5, 0, 2, 3, 3]), 32)
+    f2 = HMT(np.array([3, 3, 3, 5, 2, 1, 4, 2, 4]), 32)
+
+    #hmt2
+    #f1 = HMT(np.array([5, 4, 4, 4, 4, 0, 2, 2, 3]), 32)
+    #f2 = HMT(np.array([2, 3, 0, 4, 5, 5, 2, 2, 6]), 32)
+    
+    #hmt3
+    #f1 = HMT(np.array([0, 3, 6, 3, 6, 2, 3, 0, 4]), 32)
+    #f2 = HMT(np.array([0, 4, 5, 3, 4, 3, 3, 5, 1]), 32)
+    funcs = [f1, f2]
+    io = IO_Params(ilog2(32), 9, 2)
+    ptm_orig, ptm_opt = opt_multi(funcs, io, opt_K_multi)
+    _, ptm_opt_area = opt_multi(funcs, io, opt_K_max_area_aware_multi)
+
+    #--- AREA COST ---
+    print(espresso_get_SOP_area(ptm_orig, "hmt.in"))
+    print(espresso_get_SOP_area(ptm_opt, "hmt_opt.in"))
+    print(espresso_get_SOP_area(ptm_opt_area, "hmt_opt_a.in"))
+
+    espresso_get_opt_file(ptm_orig, "hmt1.in", "hmt1.out")
+    espresso_out_to_verilog("hmt1.out", "hmt1")
+    ptm_to_verilog_tb(ptm_orig, "hmt1")
+
+    espresso_get_opt_file(ptm_opt, "hmt1_opt.in", "hmt1_opt.out")
+    espresso_out_to_verilog("hmt1_opt.out", "hmt1_opt")
+    ptm_to_verilog_tb(ptm_opt, "hmt1_opt")
+
+    espresso_get_opt_file(ptm_opt_area, "hmt1_opt_a.in", "hmt1_opt_a.out")
+    espresso_out_to_verilog("hmt1_opt_a.out", "hmt1_opt_a")
+    ptm_to_verilog_tb(ptm_opt_area, "hmt1_opt_a")
