@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from PIL import Image
 
@@ -73,6 +74,35 @@ def disp_img(img_arr):
     """Display an image from a numpy ndarray (height, width, channels)"""
     img = Image.fromarray(img_arr)
     img.show()
+
+def add_gauss_noise(img, sigma):
+    return img + np.random.normal(0, sigma, img.shape)
+
+def add_snp_noise(img, p, ps):
+    h, w = img.shape
+    for i in range(h):
+        for j in range(w):
+            if p > np.random.uniform():
+                if ps > np.random.uniform():
+                    img[i, j] = 255
+                else:
+                    img[i, j] = 0
+    return img
+
+def add_noise_to_dir(img_dir):
+    img_list = os.listdir(img_dir)
+    for img_name in img_list:
+        img_path = img_dir + img_name
+        img = np.load(img_path)
+        img = add_gauss_noise(img, 0.1)
+        np.save(img_path, img)
+
+def disp_all_in_dir(img_dir, scaling=255):
+    img_list = os.listdir(img_dir)
+    for img_name in img_list:
+        img_path = img_dir + img_name
+        img = np.load(img_path)
+        disp_img(img*scaling)
 
 #def img_to_bs_test(**kwargs):
 #    """Test image --> bitstream conversion"""
