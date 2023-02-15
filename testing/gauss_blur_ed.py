@@ -239,8 +239,8 @@ def test_gauss_blur_4x4():
 
 def test_gauss_blur_img_bs():
     """test the 4x4 gaussian blur kernel using simulated bitstreams"""
-    Ns = [256, ]#[8, 16, 32, 64, 128, 256]
-    img_dir = "../matlab_test_imgs/gauss_noise/"
+    Ns = [512, 1024]#[8, 16, 32, 64, 128, 256]
+    img_dir = "../matlab_test_imgs/original/"
     img_list = os.listdir(img_dir)
     ssims = np.zeros((len(img_list), len(Ns),  3))
     num_trials = 3
@@ -269,7 +269,7 @@ def test_gauss_blur_img_bs():
                 #np.save("gb4_cameraman_bs.npy", gb4_out)
                 #gb4_out = np.load("gb4_cameraman_bs.npy")
                 img_gb4 = bs_to_img(gb4_out, bs_mean)
-                disp_img(img_gb4)
+                #disp_img(255-img_gb4)
 
                 #Optimized design
                 gb4_opt_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
@@ -281,7 +281,7 @@ def test_gauss_blur_img_bs():
                         gb4_out = apply_ptm_to_bs(bs_mat, gb4_opt_ptm, packed=True)
                         gb4_opt_out[y, x, :] = robert_cross_r(gb4_out[0], gb4_out[1], gb4_out[2], gb4_out[3], const_bs[4])
                 img_gb4_opt = bs_to_img(gb4_opt_out, bs_mean)
-                disp_img(img_gb4_opt)
+                #disp_img(255-img_gb4_opt)
 
                 #Sequential re-correlation (depth of 1)
                 gb4_reco_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
@@ -335,7 +335,7 @@ def test_gauss_blur_img_bs():
                 ssims[img_idx, N_idx, 1] += ssim_opt
                 ssims[img_idx, N_idx, 2] += ssim_reco
     ssims /= num_trials
-    np.save("gb4_ssims2_gauss.npy", ssims)
+    np.save("gb4_ssims3_gauss.npy", ssims)
 
 def analyze_gb4_results():
     gb4_ssims_original = np.load("gb4_ssims2_original.npy")

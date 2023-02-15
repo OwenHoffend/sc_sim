@@ -12,6 +12,7 @@ SNRs = np.array([13.58242111, 16.63124714, 16.96363117, 17.16573756, 17.57522019
 FIR_area = np.array([379.581999, 443.954, 492.1, 550.354, 572.698001, 597.436001, 614.194, 632.814])
 SSIMs = np.array([0.78481377, 0.82865676, 0.88092842, 0.92212229, 0.96502617, 0.98865833, 0.99773276, 1.])
 MED_area = np.array([272.384003, 298.984003, 318.668003, 326.382003, 350.056002, 363.622001, 367.346002, 388.892003])
+fs1 = 16
 
 def area_accuracy_ratio():
 
@@ -166,10 +167,29 @@ def value_distr_impact(corrupted=False):
     #    np.save("../tim_pcc_run2/val_distr/img_{}_full".format(i), result)
     #plt.imshow(all_images[5], cmap=plt.get_cmap('gray'), interpolation='nearest')
     #plt.show()
-    result = np.load("../tim_pcc_run2/val_distr/img_0_full.npy")
+    result = np.log10(np.load("../tim_pcc_run2/val_distr/img_5_full.npy"))
+    from numpy import inf
+    result[result == -inf] = 0
     plt.ylim(0, 256)
-    plt.imshow(result, cmap='hot', interpolation='nearest')
+    plt.imshow(result, cmap='viridis', interpolation='nearest', vmax=3.5643)
+    plt.xticks([0, 64, 128, 192, 255], ["0.0", "0.25", "0.5", "0.75", "1.0"], fontsize=fs1)
+    plt.yticks([0, 64, 128, 192, 255], ["0.0", "0.25", "0.5", "0.75", "1.0"], fontsize=fs1)
+    cbar = plt.colorbar()
+    cbar.ax.tick_params(labelsize=fs1)
     plt.show()
+
+def value_distr_impact_corr():
+    result = np.load("../tim_pcc_run2/val_distr/img_5.npy")
+    h, w = result.shape
+    pairs_x = []
+    pairs_y = []
+    for i in range(h):
+        for j in range(w):
+            pairs_x += result[i, j] * [j, ]
+            pairs_y += result[i, j] * [i, ]
+    pairs_x = np.array(pairs_x)
+    pairs_y = np.array(pairs_y)
+    print(np.corrcoef(pairs_x, pairs_y))
 
 def mmc_scc_on_imgs(k, corrupted=False):
     """For a given k value, compute the average SCC between MMC pairs using values from the 10 MATLAB images
@@ -236,19 +256,20 @@ def mmc_on_imgs_mp():
     column_width = 4
     height = 1.5
     plt.rcParams["figure.figsize"] = (column_width*2, height*2)
-    fs1 = 15
     fs2 = 12
     fig, axs = plt.subplots()
-    plt.plot(range(8), sccs_uniform, label="Uniform Distribution", marker='o', ms=8, color='#000000', ls=(3, (3, 2)))
-    plt.plot(range(8), sccs_img_3x3, label="3x3 Image Windows", marker='*', ms=8, color='#1b9e77', ls=(3, (3, 2)))
-    plt.plot(range(8), sccs_img_5x5, label="5x5 Image Windows", marker='^', ms=8, ls=(3, (3, 2)))
-    plt.plot(range(8), sccs_img_7x7, label="7x7 Image Windows", marker='x', ms=8, ls=(3, (3, 2)))
-    plt.plot(range(8), sccs_img_full, label="Full Image", marker='+', color='red', ms=8, ls=(3, (3, 2)))
+    plt.plot(range(8), sccs_uniform, label="Uniform Distribution", marker='o', linestyle='solid', ms=8, color='#000000')
+    plt.plot(range(8), sccs_img_3x3, label="3x3 Image Windows", marker='o', ms=8, linestyle='dotted', color='blue')
+    #plt.plot(range(8), sccs_img_5x5, label="5x5 Image Windows", marker='^', ms=8, ls=(3, (3, 2)))
+    #plt.plot(range(8), sccs_img_7x7, label="7x7 Image Windows", marker='x', ms=8, ls=(3, (3, 2)))
+    plt.plot(range(8), sccs_img_full, label="Full Image", marker='o', linestyle='dashed', color='red', ms=8) #line style used to be ls=(3, (3, 2))
 
     #plt.plot(range(8), sccs_img_snp, label="Img, Noisy", marker='^', ms=8, color='#7570b3')
-    axs.set_xlabel("Number of maj gates, k\n(b)", fontsize=fs1)
+    axs.set_xlabel("Number of maj gates, k", fontsize=fs1)
     axs.set_ylabel("Average SCC(X, Y)", fontsize=fs1)
-    axs.set_xticklabels(["", f"{0}\n(WBG)"] + [f"{k}" for k in range(1, 7)] + [f"{7}\n(CMP)"])
+    #axs.set_xticklabels(["", f"{0}\n(WBG)"] + [f"{k}" for k in range(1, 7)] + [f"{7}\n(CMP)"])
+    axs.set_xticklabels([f"{k}" for k in range(-1, 8)], fontsize=fs1)
+    axs.set_yticklabels(["-1", "0.0", "0.2", "0.4", "0.6", "0.8", "1.0"], fontsize=fs1)
     plt.legend(fontsize=fs1, loc="lower right")
     plt.grid()
     plt.tight_layout()
