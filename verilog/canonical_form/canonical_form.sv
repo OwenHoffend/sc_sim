@@ -7,7 +7,6 @@ module canonical_form(
 );
 
     logic [2**NUM_CONSTS-1:0] ohot_const;
-    logic [2**NUM_CONSTS-1:0] therm_const;
     logic [2**NUM_VARS-1:0] ohot_vars;
 
     always_comb begin
