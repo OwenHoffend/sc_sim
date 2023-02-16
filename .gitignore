@@ -12,9 +12,8 @@ __pycache__/
 # out
 *.out
 
-# verilog files
-*.v
-*.sv
+# Auto-generated verilog files
+verilog/autogen/*
 
 # Distribution / packaging
 .Python

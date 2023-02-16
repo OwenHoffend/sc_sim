@@ -37,3 +37,7 @@ def test_espresso_out_to_verilog():
     #espresso_out_to_verilog("gb4.out", "gb4")
     #espresso_out_to_verilog("gb4_opt.out", "gb4_opt")
     espresso_out_to_verilog("gb4_opt_a.out", "gb4_opt_a")
+
+def test_ptm_to_canonical_opt_verilog():
+    gb4_ptm = np.load("gb4_ptm.npy")
+    ptm_to_canonical_opt_verilog(gb4_ptm, 4, 16, "gb4")

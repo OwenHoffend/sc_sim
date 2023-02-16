@@ -1,5 +1,7 @@
 import numpy as np
 from sim.PTM import bin_array, B_mat
+from sim.SEC_opt_macros import IO_Params, ilog2
+from sim.SEC import get_Ks_from_ptm
 
 def ptm_to_verilog(ptm, module_name):
     n2, k2 = ptm.shape
@@ -85,3 +87,28 @@ def espresso_out_to_verilog(ifn, module_name):
                 line = infile.readline()
             outfile.write("end \n".format(k, k*'0'))
             outfile.write("endmodule")
+
+def ptm_to_canonical_opt_verilog(ptm, nc, nv, circ_name):
+    io = IO_Params(nc, nv, ilog2(ptm.shape[1]))
+    Ks = get_Ks_from_ptm(ptm, io)
+    weight_matrix = np.empty((io.nv2, io.k), dtype=np.int32)
+    for k in range(io.k):
+        weight_matrix[:, k] = np.sum(Ks[k], axis=1)
+    
+    weight_matrix_string = '{' + ','.join(str(x) for x in weight_matrix.flatten('F')) + '}' #weight matrix is a 1D vector
+    # C: Flatten in row-major ordering (C style)
+    # F: Flatten in column-major ordering (Fortran style)
+    verilog_code = f"""
+    `ifndef CIRC_SPEC_{circ_name}
+    `define CIRC_SPEC_{circ_name}
+    localparam integer NUM_CONSTS = {io.nc};
+    localparam integer NUM_VARS = {io.nv};
+    localparam integer NUM_OUTPUTS = {io.k};
+
+    localparam integer NUM_INPUTS = NUM_CONSTS + NUM_VARS;
+    localparam integer NUM_WEIGHTS = 2 ** NUM_VARS;
+    localparam integer WEIGHT_MATRIX [NUM_OUTPUTS * NUM_WEIGHTS-1 : 0]   = {weight_matrix_string};
+    `endif
+    """
+    with open(f"./verilog/canonical_form/circs/{circ_name}.svh", 'w') as outfile:
+        outfile.write(verilog_code)

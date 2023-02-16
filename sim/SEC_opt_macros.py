@@ -1,5 +1,4 @@
 import numpy as np
-import os
 from sim.PTM import *
 from sim.SEC import *
 from sim.bitstreams import hamming_dist

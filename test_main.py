@@ -20,9 +20,9 @@ from testing.kernel_2x2 import *
 from testing.tim_pcc_analysis import *
 from testing.pcc_analysis_paper import *
 from testing.test_HMT import *
-from testing.test_canonical_max_scc import *
 from testing.test_verilog_gen import *
 from testing.test_espresso import *
+from testing.test_seq_recorr import *
 
 from sim.circuits import *
 from cv.CNN_classifier import CNN_classifier_main
@@ -43,7 +43,7 @@ def profile(func):
 
 def main():
     """THIS SHOULD BE THE MAIN ENTRY POINT FOR EVERYTHING!"""
-    test_espresso_out_to_verilog()
+    test_ptm_to_canonical_opt_verilog()
 
 if __name__ == "__main__":
     main() 
