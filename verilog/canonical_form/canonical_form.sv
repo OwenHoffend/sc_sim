@@ -1,4 +1,5 @@
-`include "circ_spec.vh"
+`include "./sc_sim/verilog/canonical_form/circ_spec.svh"
+
 module canonical_form(
     input [NUM_CONSTS-1:0] const_inputs,
     input [NUM_VARS-1:0] var_inputs,
@@ -9,19 +10,27 @@ module canonical_form(
     logic [2**NUM_CONSTS-1:0] therm_const;
     logic [2**NUM_VARS-1:0] ohot_vars;
 
-    bin_to_onehot bin_to_ohot_const(.N(2**NUM_CONSTS))(
-        .bin(const_inputs),
-        .ohot(ohot_const)
-    );
+    always_comb begin
+        ohot_const = 1 << const_inputs;
+        ohot_vars = 1 << var_inputs;
+    end
 
-    bin_to_onehot bin_to_ohot_var(.N(2**NUM_VARS))(
-        .bin(var_inputs),
-        .ohot(ohot_vars)
-    );
-
-    onehot_to_therm ohot_to_therm_const(.N(2**NUM_CONSTS))(
-        .oh(ohot_const),
-        .therm(therm_const)
-    );
-
+    //AND-OR Network
+    genvar k;
+    genvar v;
+    generate
+    for(k = 0; k < NUM_OUTPUTS; k++) begin
+        logic [2**NUM_VARS-1:0] and_outputs;
+        for(v = 0; v < 2**NUM_VARS; v++) begin
+            localparam WEIGHT = WEIGHT_MATRIX[k*(2**NUM_VARS)+v]; 
+            if(WEIGHT == 0)
+                assign and_outputs[v] = 1'b0;
+            else if(WEIGHT == 2**NUM_CONSTS)
+                assign and_outputs[v] = ohot_vars[v];
+            else
+                assign and_outputs[v] = ohot_vars[v] & |ohot_const[WEIGHT-1:0];
+        end
+        assign outputs[k] = |and_outputs;
+    end
+    endgenerate
 endmodule

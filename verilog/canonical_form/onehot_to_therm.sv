@@ -1,4 +1,3 @@
-
 //Efficiently convert a one-hot encoding to a thermometer encoding
 //Example: 00001000 --> 00001111
 //This uses log2(N) layers of logic, recursively defined
@@ -37,5 +36,3 @@ module onehot_to_therm #(parameter N = 8, DIR = 0)(
     end
     endgenerate
 endmodule
-
-`endif
