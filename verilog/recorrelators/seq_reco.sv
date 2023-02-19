@@ -1,4 +1,5 @@
-module seq_reco( //simple 2-state sequential recorrelator
+//simple 3-state sequential recorrelator
+module seq_reco( 
     input x, y, clk, rst_n,
     output logic x_reco_r, y_reco_r
 );
