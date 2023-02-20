@@ -40,10 +40,9 @@ function fail(
 endfunction
 
 task reset();
-    rst_n = 0;
-    @(negedge clk);
-    rst_n = 1;
-    @(negedge clk);
+    rst_n = 1; #1;
+    rst_n = 0; #1;
+    rst_n = 1; #1;
 endtask
 
 task test_bs(

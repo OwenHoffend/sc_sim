@@ -1,4 +1,4 @@
-`include "./sc_sim/verilog/canonical_form/circ_spec.svh"
+`include "./sc_sim/verilog/canonical_form/circs/gb4.svh"
 
 module canonical_form(
     input [NUM_CONSTS-1:0] const_inputs,

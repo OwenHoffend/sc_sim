@@ -10,7 +10,7 @@ logic x_reco, y_reco;
 
 always_ff @(posedge clk or negedge rst_n) begin //next state registers
     if(!rst_n) begin
-        state <= INIT;
+        state <= 0;
         sign <= 1'b0;
     end else begin 
         state <= next_state;
@@ -52,13 +52,18 @@ always_comb begin //output logic
     x_reco = x;
     y_reco = y;
     if(x != y) begin
-        if(sign) begin //left side
-            if(y) x_reco = 1'b1;
-            else if(state < DEPTH) x_reco = 1'b0;
-        end else begin //right side
-            if(x) y_reco = 1'b1;
-            else if(state < DEPTH) y_reco = 1'b0;
-        end 
+        if(state == 0) begin
+            x_reco = 1'b0;
+            y_reco = 1'b0;
+        end else begin
+            if(sign) begin //left side
+                if(y) x_reco = 1'b1;
+                else if(state < DEPTH) x_reco = 1'b0;
+            end else begin //right side
+                if(x) y_reco = 1'b1;
+                else if(state < DEPTH) y_reco = 1'b0;
+            end 
+        end
     end
 end
 endmodule
