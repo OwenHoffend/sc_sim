@@ -51,7 +51,7 @@ def fsm_reco(x1_bs, x2_bs, packed=False): #Depth of 1
         z2_bs = np.packbits(z2_bs)
     return z1_bs, z2_bs
 
-def fsm_reco_N(x1_bs, x2_bs, d, packed=False):
+def fsm_reco_d(x1_bs, x2_bs, d, packed=False):
     """FSM-based recorrelation with an arbitrary depth d. When d=1, this is equivalent to fsm_reco"""
     if packed:
         x1_bs = np.unpackbits(x1_bs)
@@ -69,8 +69,8 @@ def fsm_reco_N(x1_bs, x2_bs, d, packed=False):
         x2 = x2_bs[i]
         z1 = x1
         z2 = x2
-        if x1 != x2: #unpaired x1
-            if x1:
+        if x1 != x2: 
+            if x1: #unpaired x1
                 if state > 0:
                     z1 = True
                     z2 = True

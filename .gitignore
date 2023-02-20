@@ -155,3 +155,5 @@ Espresso.exe
 
 *.csv
 *.in
+HMT_results/HMT_test.txt
+scratch_18.py
