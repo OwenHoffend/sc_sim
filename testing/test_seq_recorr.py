@@ -21,25 +21,26 @@ def get_seq_reco_verilog_testcases():
     N = 256
     def bstr(bs):
         return "{}'b".format(N) + ''.join(str(x) for x in np.unpackbits(bs))
-    NUM_DEPTHS = 2
+    NUM_DEPTHS = 10
     bs_strs = []
-    for d in range(NUM_DEPTHS):
+    for d in range(1, NUM_DEPTHS+1):
+        print(d)
         bs1, bs2, bs1_r, bs2_r = test_fsm_reco(N, d)
         bs_strs.append(bstr(bs1))
         bs_strs.append(bstr(bs2))
         bs_strs.append(bstr(bs1_r))
         bs_strs.append(bstr(bs2_r))
-    bs_str = ", ".join(bs_strs)
+    bs_str = ", ".join(reversed(bs_strs))
 
     verilog_code = f"""
 `ifndef RECO_TEST_CASES
 `define RECO_TEST_CASES
 localparam NUM_DEPTHS = {NUM_DEPTHS};
 localparam N = {N};
-localparam [{N-1}:0] testcases [{4*NUM_DEPTHS-1}:0] = {{
+localparam [{N-1}:0] tcs [{4*NUM_DEPTHS-1}:0] = {{
 {bs_str}
 }};
 `endif
 """
-    with open(f"./verilog/recorrelators/testbench/seq_test_cases.svh", 'w') as outfile:
+    with open(f"./verilog/recorrelators/testbench/reco_test_cases.svh", 'w') as outfile:
         outfile.write(verilog_code)

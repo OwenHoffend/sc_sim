@@ -60,8 +60,8 @@ def fsm_reco_d(x1_bs, x2_bs, d, packed=False):
     N2 = x2_bs.size
     assert N1 == N2
     assert d <= N1
-    z1_bs = np.zeros(N1 + d, dtype=np.bool_)
-    z2_bs = np.zeros(N1 + d, dtype=np.bool_)
+    z1_bs = np.zeros(N1, dtype=np.bool_)
+    z2_bs = np.zeros(N1, dtype=np.bool_)
 
     state = 0
     for i in range(N1):
