@@ -1,5 +1,6 @@
 //Sequential recorrelator with parameterizable depth
-module seq_reco_d #(parameter DEPTH=1)(
+`include "./sc_sim/verilog/recorrelators/testbench/reco_test_cases.svh"
+module seq_reco_d #(parameter DEPTH=`DEFAULT_DEPTH)(
     input x, y, clk, rst_n,
     output logic x_reco_r, y_reco_r
 );

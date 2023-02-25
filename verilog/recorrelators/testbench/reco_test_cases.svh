@@ -1,6 +1,11 @@
 
 `ifndef RECO_TEST_CASES
 `define RECO_TEST_CASES
+`ifdef SYNTHESIS
+    `define DEFAULT_DEPTH 10
+`else
+    `define DEFAULT_DEPTH 1
+`endif
 localparam NUM_DEPTHS = 10;
 localparam N = 256;
 localparam [255:0] tcs [39:0] = {
