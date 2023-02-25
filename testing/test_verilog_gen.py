@@ -3,6 +3,7 @@ from sim.verilog_gen import *
 from sim.circuits import mux_1
 from sim.PTM import get_func_mat, B_mat
 from sim.SEC import Ks_to_Mf, opt_K_max
+from sim.espresso import espresso_get_opt_file
 
 def FA(a, b, cin):
     sum = np.bitwise_xor(np.bitwise_xor(a, b), cin)
@@ -34,9 +35,9 @@ def test_larger_ptm_to_verilog():
     ptm_to_verilog_tb(gb4_opt_a_ptm, "gb4_opt_a")
 
 def test_espresso_out_to_verilog():
-    #espresso_out_to_verilog("gb4.out", "gb4")
-    #espresso_out_to_verilog("gb4_opt.out", "gb4_opt")
-    espresso_out_to_verilog("gb4_opt_a.out", "gb4_opt_a")
+    gb2_opt = np.load("gb2.npy")
+    espresso_get_opt_file(gb2_opt, "gb2_opt.in", "gb2_opt.out")
+    espresso_out_to_verilog("gb2_opt.out", "gb2_opt")
 
 def test_ptm_to_canonical_opt_verilog():
     gb4_ptm = np.load("gb4_ptm.npy")
