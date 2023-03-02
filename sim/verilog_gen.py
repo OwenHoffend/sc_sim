@@ -31,7 +31,7 @@ def ptm_to_verilog_tb(ptm, module_name):
     n2, k2 = ptm.shape
     n = np.log2(n2).astype(np.int32)
     k = np.log2(k2).astype(np.int32)
-    assert n <= 20 #Prevent large file outputs
+    assert n <= 22 #Prevent large file outputs
     Bk = B_mat(k)
     Amat = ptm @ Bk
     fn = module_name + "_tb.sv"

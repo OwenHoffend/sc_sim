@@ -244,19 +244,19 @@ def PTV_swap_cols(ptv, swap_inds):
 # PTM GENERATION & MANIPULATION
 #----------------------------------------------------------------------------------#
 
-def get_func_mat(func, n, k):
+def get_func_mat(func, n, k, **kwargs):
     """Compute the PTM for a boolean function with n inputs and k outputs
         Does not handle probabilistic functions, only pure boolean functions"""
     Mf = np.zeros((2 ** n, 2 ** k), dtype=bool)
 
     if k == 1:
         for i in range(2 ** n):
-            res = func(*list(bin_array(i, n)))
+            res = func(*list(bin_array(i, n)), **kwargs)
             num = res.astype(np.uint8)
             Mf[i][num] = 1
     else:
         for i in range(2 ** n):
-            res = func(*list(bin_array(i, n)))
+            res = func(*list(bin_array(i, n)), **kwargs)
             num = 0
             for idx, j in enumerate(res):
                 if j:
@@ -264,17 +264,15 @@ def get_func_mat(func, n, k):
             Mf[i][num] = 1
     return Mf
 
-    #for i in range(2 ** n):
-    #    res = func(*list(bin_array(i, n)))
-    #    if k == 1:
-    #        num = res.astype(np.uint8)
-    #    else:
-    #        num = 0
-    #        for idx, j in enumerate(res):
-    #            if j:
-    #                num += 1 << idx
-    #    Mf[i][num] = 1
-    #return Mf
+def get_func_from_ptm(Mf):
+    """Does the inverse of get_func_mat; transform a PTM into a python function"""
+    _, k2 = Mf.shape
+    k = np.log2(k2).astype(np.int32)
+    bm = B_mat(k)
+    def func(*x):
+        idx = int_array(np.array(list(x)))
+        return Mf[idx, :] @ bm
+    return func
 
 def apply_ptm_to_bs(bs_mat, Mf, packed=False):
     """Given a set of input bitstrems, compute the output bitstreams for the circuit defined by the PTM Mf

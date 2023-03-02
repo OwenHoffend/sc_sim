@@ -50,7 +50,7 @@ def gb2(
         x21, x22, x23,
         x31, x32, x33,
         c0, c1, c2, c3,
-        exact=False
+        exact=exact
     )
 
     bot = gauss_blur_3x3(
@@ -58,7 +58,7 @@ def gb2(
         x32, x33, x34,
         x42, x43, x44,
         c0, c1, c2, c3,
-        exact=False
+        exact=exact
     )
 
     return top, bot
@@ -121,6 +121,34 @@ def gauss_blur_ED(
     )
     return robert_cross_r(a11, a22, a12, a21, c4, exact=exact)
 
+def GBED_gb2_opt(
+    x11, x12, x13, x14,
+    x21, x22, x23, x24,
+    x31, x32, x33, x34,
+    x41, x42, x43, x44,
+    c0, c1, c2, c3, **kwargs
+):
+    if 'gb2_opt_func' in kwargs:
+        gb2_opt_func = kwargs['gb2_opt_func']
+    else: #The following two lines are expensive so we need the option to do it without loading the PTM every time
+        gb2_opt_ptm = np.load("gb2_ptm_opt.npy")
+        gb2_opt_func = get_func_from_ptm(gb2_opt_ptm) # probably want to cache this if we're running this many times
+    a11, a22 = gb2_opt_func(
+        x11, x12, x13,
+        x21, x22, x23, x24,
+        x31, x32, x33, x34,
+             x42, x43, x44,
+        c0, c1, c2, c3
+    )
+    a12, a21 = gb2_opt_func(
+        x14, x13, x12,
+        x24, x23, x22, x21,
+        x34, x33, x32, x31, 
+             x43, x42, x41,
+        c0, c1, c2, c3
+    )
+    return a11, a12, a21, a22
+
 def extract_gauss_4x4_inputs(img, x, y, consts):
     imgs = [img[y, x], img[y, x+1], img[y, x+2], img[y, x+3],
     img[y+1, x], img[y+1, x+1], img[y+1, x+2], img[y+1, x+3],
@@ -171,112 +199,11 @@ def test_gauss_blur_3x3():
         result = B_mat(1).T @ gb3_ptm.T @ v_in
         assert np.isclose(correct_result, result)
 
-def test_gauss_blur_4x4():
-    #num_tests = 252 ** 2
-    num_tests = 1000
-    gb4_ptm = np.load("gb4_ptm.npy")
-    #gb4_ptm = get_func_mat(gauss_blur_4x4, 20, 4)
-    #np.save("gb4_ptm.npy", gb4_ptm)
-
-    print("Get opt ptm")
-    rced_ptm = get_func_mat(robert_cross_r, 5, 1)
-    rced_ptm = reduce_func_mat(rced_ptm, 4, 0.5)
-    A = gb4_ptm @ B_mat(4)
-    Ks = []
-    Ks_opt = []
-    for i in range(4):
-        K = A[:, i].reshape(2**4, 2**16).T
-        K_opt = opt_K_max(K)
-        Ks.append(K)
-        Ks_opt.append(K_opt)
-
-    for i in range(4):
-        weights = np.sum(Ks[i], axis=1)
-        print(np.unique(weights, return_counts=True))
-
-    Ks_opt_area_aware = opt_K_max_area_aware_multi(Ks)
-    gb4_ptm_opt = Ks_to_Mf(Ks_opt)
-    gb4_ptm_opt_a = Ks_to_Mf(Ks_opt_area_aware)
-    np.save("gb4_opt_a.npy", gb4_ptm_opt_a)
-
-    print(compare_Kmat_hamming_dist(Ks, Ks_opt))
-    print(compare_Kmat_hamming_dist(Ks, Ks_opt_area_aware))
-
-    #print(espresso_get_SOP_area(Ks_to_A(Ks), "gb4.in", is_A=True))
-    #print(espresso_get_SOP_area(Ks_to_A(Ks_opt), "gb4.in", is_A=True))
-    print(espresso_get_SOP_area(Ks_to_A(Ks_opt_area_aware), "gb4.in", is_A=True))
-
-    avg_corr = np.zeros((4,4))
-    avg_corr_opt = np.zeros((4,4))
-    avg_corr_opt_a = np.zeros((4,4))
-    B4 = B_mat(4)
-    gk = np.array([0.25, 0.5, 0.25])
-
-    unopt_err = []
-    opt_err = []
-    opt_a_err = []
-    img = load_img("./img/cameraman.png", gs=True)
-    v0 = get_vin_mc0(np.array([0.5, 0.5, 0.5, 0.5]))
-    
-    #correct_img = np.zeros((256, 256))
-    #out_img = np.zeros((256, 256))
-    #out_img_opt = np.zeros((256, 256))
-    for i in range(num_tests):
-    #for i in range(252):
-    #    print(i)
-    #    for j in range(252):
-        print(i)
-        px = np.random.rand(4, 4)
-        #px = img[i:i+4, j:j+4] / 256
-
-        #Correct result computation
-        c1 = gk.T @ px[0:3, 0:3] @ gk
-        c2 = gk.T @ px[0:3, 1:4] @ gk
-        c3 = gk.T @ px[1:4, 0:3] @ gk
-        c4 = gk.T @ px[1:4, 1:4] @ gk
-        rced_correct = 0.5*(np.abs(c1-c4) + np.abs(c2-c3))
-
-        v_in = np.kron(v0, get_vin_mc1(px.reshape(16, )))
-        result_ptv = gb4_ptm.T @ v_in
-        result_ptv_opt = gb4_ptm_opt.T @ v_in
-        result_ptv_a = gb4_ptm_opt_a.T @ v_in
-        rced_out_ptv = rced_ptm.T @ result_ptv
-        rced_out_ptv_opt = rced_ptm.T @ result_ptv_opt
-        rced_out_ptv_opt_a = rced_ptm.T @ result_ptv_a
-
-        unopt_err.append(np.abs(rced_out_ptv[1] - rced_correct))
-        opt_err.append(np.abs(rced_out_ptv_opt[1] - rced_correct))
-        opt_a_err.append(np.abs(rced_out_ptv_opt_a[1] - rced_correct))
-        #correct_img[i, j] = rced_correct
-        #out_img[i, j] = rced_out_ptv[1]
-        #out_img_opt[i, j] = rced_out_ptv_opt[1]
-
-        #result_pout = B4.T @ result_ptv
-        #result_pout_opt = B4.T @ result_ptv_opt
-        #assert np.all(np.isclose(result_pout, result_pout_opt))
-
-        cout = get_corr_mat_paper(result_ptv)
-        cout_opt = get_corr_mat_paper(result_ptv_opt)
-        cout_opt_a = get_corr_mat_paper(result_ptv_a)
-        avg_corr += cout
-        avg_corr_opt += cout_opt
-        avg_corr_opt_a += cout_opt_a
-
-    avg_corr /= num_tests
-    avg_corr_opt /= num_tests
-    avg_corr_opt_a /= num_tests
-    print(avg_corr)
-    print(avg_corr_opt)
-    print(avg_corr_opt_a)
-    print(np.mean(unopt_err))
-    print(np.mean(opt_err))
-    print(np.mean(opt_a_err))
-
 def test_gauss_blur_img_bs():
     """test the 4x4 gaussian blur kernel using simulated bitstreams"""
     N = 16
-    num_trials = 2
-    ds = list(range(1, 8))
+    num_trials = 4
+    ds = list(range(1, 4))
     img_dir = "../matlab_test_imgs/gauss_noise/"
     img_dir_orig = "../matlab_test_imgs/original/"
     img_list = ["cameraman.npy"] #os.listdir(img_dir)
@@ -292,6 +219,8 @@ def test_gauss_blur_img_bs():
             print("trial: ", trial_idx)
             rng = bs.SC_RNG()
             img_bs = img_to_bs(img, rng.bs_lfsr, bs_len=N, lfsr_sz=8)
+            img_orig = bs_to_img(img_bs, bs_mean)
+            #disp_img(img_orig)
             const_bs = rng.bs_lfsr_p5_consts(N, 5, 8, add_zero_state=True)
 
             #MAIN TESTCASE --> Un-optimized design
@@ -303,7 +232,7 @@ def test_gauss_blur_img_bs():
             #np.save("gb4_cameraman_bs.npy", gb4_out)
             #gb4_out = np.load("gb4_cameraman_bs.npy")
             img_gb4 = bs_to_img(gb4_out, bs_mean)
-            #disp_img(img_gb4)
+            disp_img(255-img_gb4)
 
             #GET THE CORRECT OUTPUT
             gb4_correct = np.zeros((h-3, w-3))
@@ -311,7 +240,7 @@ def test_gauss_blur_img_bs():
                 #print("y: ", y)
                 for x in range(w-3):
                     gb4_correct[y, x] = apply_gauss_4x4_ed(img_orig, x, y, const_bs, exact=True)
-            #disp_img(gb4_correct)
+            #disp_img(255-gb4_correct)
 
             ssim_orig = ssim( #un-optimized gb4
                 img_gb4,
@@ -329,8 +258,7 @@ def test_gauss_blur_img_bs():
                 #MAIN TESTCASE --> Optimized design
                 gb4_opt_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
                 gb4_both_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
-                #gb4_opt_ptm = np.load("gb4_opt_ptm.npy") #<-- change this
-                gb4_opt_ptm = np.load("gb4_ptm_opt_pairs.npy") #<-- change this
+                gb4_opt_ptm = np.load("gb4_gb2_opt_ptm.npy") #<-- change this
                 for y in range(h-3):
                     #print("y: ", y)
                     for x in range(w-3):
@@ -345,8 +273,8 @@ def test_gauss_blur_img_bs():
                         
                 img_gb4_opt = bs_to_img(gb4_opt_out, bs_mean)
                 img_gb4_both = bs_to_img(gb4_both_out, bs_mean)
-                #disp_img(img_gb4_opt)
-                #disp_img(img_gb4_both)
+                #disp_img(255-img_gb4_opt)
+                disp_img(255-img_gb4_both)
 
                 #MAIN TESTCASE --> Sequential re-correlation on its own
                 gb4_reco_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
@@ -434,87 +362,3 @@ def analyze_gb4_results():
     #plt.title("3x3 Gauss Blur + Edge Detection Relative SSIM Improvement")
     #plt.legend(loc="lower center")
     #plt.show()
-
-def test_gauss_blur_img():
-    """test the 4x4 gaussian blur kernel using real images, via PTMs"""
-    #num_tests = 252 ** 2
-    num_tests = 1000
-    gb4_ptm = np.load("gb4_ptm.npy")
-    #gb4_ptm = get_func_mat(gauss_blur_4x4, 20, 4)
-    #np.save("gb4_ptm.npy", gb4_ptm)
-
-    rced_ptm = get_func_mat(robert_cross_r, 5, 1)
-    rced_ptm = reduce_func_mat(rced_ptm, 4, 0.5)
-    #A = gb4_ptm @ B_mat(4)
-    #Ks = []
-    #Ks_opt = []
-    #for i in range(4):
-    #    K = A[:, i].reshape(2**4, 2**16).T
-    #    K_opt = opt_K_max(K)
-    #    Ks.append(K)
-    #    Ks_opt.append(K_opt)
-    #gb4_ptm_opt = Ks_to_Mf(Ks_opt)
-    gb4_ptm_opt = np.load("gb4_opt_ptm.npy")
-    espresso_get_opt_file(gb4_ptm_opt, "gb4_opt.in", "gb4_opt.out")
-
-    #avg_corr = np.zeros((4,4))
-    #avg_corr_opt = np.zeros((4,4))
-    #B4 = B_mat(4)
-    #gk = np.array([0.25, 0.5, 0.25])
-
-    #unopt_err = []
-    #opt_err = []
-    img = load_img("./img/cameraman.png", gs=True)
-    h, w = img.shape
-    v0 = get_vin_mc0(np.array([0.5, 0.5, 0.5, 0.5]))
-
-    #Salt and pepper noise
-    img = add_snp_noise(img, 1/32, 0.5)
-    
-    #correct_img = np.zeros((h, w))
-    out_img = np.zeros((h, w))
-    out_img_opt = np.zeros((h, w))
-    for i in range(128, 138):
-        print(i)
-        for j in range(w-4):
-            px = img[i:i+4, j:j+4] / 256
-
-            #Correct result computation
-            #c1 = gk.T @ px[0:3, 0:3] @ gk
-            #c2 = gk.T @ px[0:3, 1:4] @ gk
-            #c3 = gk.T @ px[1:4, 0:3] @ gk
-            #c4 = gk.T @ px[1:4, 1:4] @ gk
-            #rced_correct = 0.5*(np.abs(c1-c4) + np.abs(c2-c3))
-
-            v_in = np.kron(v0, get_vin_mc1(px.reshape(16, )))
-            result_ptv = gb4_ptm.T @ v_in
-            result_ptv_opt = gb4_ptm_opt.T @ v_in
-            rced_out_ptv = rced_ptm.T @ result_ptv
-            rced_out_ptv_opt = rced_ptm.T @ result_ptv_opt
-
-            #unopt_err.append(np.abs(rced_out_ptv[1] - rced_correct))
-            #opt_err.append(np.abs(rced_out_ptv_opt[1] - rced_correct))
-            #correct_img[i, j] = rced_correct
-            out_img[i, j] = rced_out_ptv[1]
-            out_img_opt[i, j] = rced_out_ptv_opt[1]
-
-            #result_pout = B4.T @ result_ptv
-            #result_pout_opt = B4.T @ result_ptv_opt
-            #assert np.all(np.isclose(result_pout, result_pout_opt))
-
-            #cout = get_corr_mat_paper(result_ptv)
-            #cout_opt = get_corr_mat_paper(result_ptv_opt)
-            #avg_corr += cout
-            #avg_corr_opt += cout_opt
-
-    disp_img(out_img * 256 * 2)
-    disp_img(out_img_opt * 256 * 2)
-    #avg_corr /= num_tests
-    #avg_corr_opt /= num_tests
-    #print(avg_corr)
-    #print(avg_corr_opt)
-    #print(np.mean(unopt_err))
-    #print(np.std(unopt_err))
-    #print(np.mean(opt_err))
-    #print(np.std(opt_err))
-    pass
