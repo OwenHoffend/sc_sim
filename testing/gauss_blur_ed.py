@@ -1,4 +1,3 @@
-import os
 import numpy as np
 from sim.bitstreams import *
 from sim.PTM import *
@@ -6,10 +5,10 @@ from sim.SEC import *
 from sim.circuits import mux_1, maj_1, robert_cross
 from sim.espresso import *
 from cv.img_io import *
+from cv.img_quality import *
 from sim.SEC_opt_macros import *
 from sim.seq_recorr import *
 import matplotlib.pyplot as plt
-from skimage.metrics import structural_similarity as ssim
 
 def robert_cross_r(x11, x22, x12, x21, s, exact=False):
     #Version of robert_cross with sel on the other side
@@ -201,26 +200,23 @@ def test_gauss_blur_3x3():
 
 def test_gauss_blur_img_bs():
     """test the 4x4 gaussian blur kernel using simulated bitstreams"""
-    N = 16
-    num_trials = 4
+    N = 256
+    num_trials = 1
     ds = list(range(1, 4))
     img_dir = "../matlab_test_imgs/gauss_noise/"
-    img_dir_orig = "../matlab_test_imgs/original/"
-    img_list = ["cameraman.npy"] #os.listdir(img_dir)
+    img_list = os.listdir(img_dir)
     ssims = np.zeros((len(img_list), len(ds), 4)) #4 is the number of MAIN TESTCASEs 
+    img_results = np.zeros(((len(img_list), len(ds), num_trials, 4)), dtype=np.object_)
     for img_idx, img_name in enumerate(img_list):
         print("img: ", img_name)
         #Get the input bitstreams
-        img = np.load(img_dir + img_name)*256
-        img_orig = np.load(img_dir_orig + img_name)*256
+        img = np.load(img_dir + img_name)
         Npb = np.int32(N/8)
         h, w = img.shape
         for trial_idx in range(num_trials):
             print("trial: ", trial_idx)
             rng = bs.SC_RNG()
-            img_bs = img_to_bs(img, rng.bs_lfsr, bs_len=N, lfsr_sz=8)
-            img_orig = bs_to_img(img_bs, bs_mean)
-            #disp_img(img_orig)
+            img_bs = img_to_bs(img, rng.bs_lfsr, bs_len=N, lfsr_sz=8, scale=False)
             const_bs = rng.bs_lfsr_p5_consts(N, 5, 8, add_zero_state=True)
 
             #MAIN TESTCASE --> Un-optimized design
@@ -232,25 +228,17 @@ def test_gauss_blur_img_bs():
             #np.save("gb4_cameraman_bs.npy", gb4_out)
             #gb4_out = np.load("gb4_cameraman_bs.npy")
             img_gb4 = bs_to_img(gb4_out, bs_mean)
-            disp_img(255-img_gb4)
+            #disp_img(255-img_gb4)
 
             #GET THE CORRECT OUTPUT
             gb4_correct = np.zeros((h-3, w-3))
             for y in range(h-3):
                 #print("y: ", y)
                 for x in range(w-3):
-                    gb4_correct[y, x] = apply_gauss_4x4_ed(img_orig, x, y, const_bs, exact=True)
+                    gb4_correct[y, x] = apply_gauss_4x4_ed(img, x, y, const_bs, exact=True) #<-- was img_orig, which unnecessarily converts to/from bitstreams
             #disp_img(255-gb4_correct)
 
-            ssim_orig = ssim( #un-optimized gb4
-                img_gb4,
-                gb4_correct,
-                data_range=255,
-                gaussian_weights=True,
-                win_size=11,
-                K1=0.01,
-                K2=0.03
-            )
+            ssim_orig = ssim(img_gb4, gb4_correct) #un-optimized gb4
 
             for d_idx, d in enumerate(ds):
                 print("d: ", d)
@@ -274,7 +262,7 @@ def test_gauss_blur_img_bs():
                 img_gb4_opt = bs_to_img(gb4_opt_out, bs_mean)
                 img_gb4_both = bs_to_img(gb4_both_out, bs_mean)
                 #disp_img(255-img_gb4_opt)
-                disp_img(255-img_gb4_both)
+                #disp_img(255-img_gb4_both)
 
                 #MAIN TESTCASE --> Sequential re-correlation on its own
                 gb4_reco_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
@@ -287,33 +275,9 @@ def test_gauss_blur_img_bs():
                 img_gb4_reco = bs_to_img(gb4_reco_out, bs_mean)
                 #disp_img(img_gb4_reco)
 
-                ssim_opt = ssim( #optimized gb4
-                    img_gb4_opt,
-                    gb4_correct,
-                    data_range=255,
-                    gaussian_weights=True,
-                    win_size=11,
-                    K1=0.01,
-                    K2=0.03
-                )
-                ssim_both = ssim( #optimized gb4 + sequential recorrelation
-                    img_gb4_both,
-                    gb4_correct,
-                    data_range=255,
-                    gaussian_weights=True,
-                    win_size=11,
-                    K1=0.01,
-                    K2=0.03
-                )
-                ssim_reco = ssim( #sequential recorrelation only
-                    img_gb4_reco,
-                    gb4_correct,
-                    data_range=255,
-                    gaussian_weights=True,
-                    win_size=11,
-                    K1=0.01,
-                    K2=0.03
-                )
+                ssim_opt = ssim(img_gb4_opt, gb4_correct) #optimized gb4
+                ssim_both = ssim(img_gb4_both, gb4_correct) #optimized gb4 + sequential recorrelation
+                ssim_reco = ssim(img_gb4_reco, gb4_correct) #sequential recorrelation only
                 print(ssim_orig)
                 print(ssim_opt)
                 print(ssim_both)
@@ -322,10 +286,26 @@ def test_gauss_blur_img_bs():
                 ssims[img_idx, d_idx, 1] += ssim_opt
                 ssims[img_idx, d_idx, 2] += ssim_both
                 ssims[img_idx, d_idx, 3] += ssim_reco
+                img_results[img_idx, d_idx, trial_idx, 0] = gb4_correct
+                img_results[img_idx, d_idx, trial_idx, 1] = img_gb4_opt
+                img_results[img_idx, d_idx, trial_idx, 2] = img_gb4_both
+                img_results[img_idx, d_idx, trial_idx, 3] = img_gb4_reco
     ssims /= num_trials
     np.save("gb4_ssims_reco_N{}.npy".format(N), ssims)
+    np.save("gb4_img_results_N{}.npy".format(N), img_results)
 
-def analyze_gb4_results():
+def compute_conf_mat_stats(img_str):
+    imgs = np.load(img_str, allow_pickle=True)
+    num_imgs, num_ds, num_trials, _ = imgs.shape
+    for i in range(num_imgs):
+        for d in range(num_ds):
+            for t in range(num_trials):
+                img_orig = imgs[i, d, t, 0]
+                disp_img(img_orig)
+                pass
+
+
+def analyze_gb4_ssim_results():
     gb4_ssims_original = np.load("gb4_ssims2_original.npy")
     gb4_ssims_snp = np.load("gb4_ssims2_snp.npy")
     gb4_ssims_gauss = np.load("gb4_ssims2_gauss.npy")

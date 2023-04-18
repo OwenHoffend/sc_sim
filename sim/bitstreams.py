@@ -95,6 +95,15 @@ class SC_RNG:
         if pack:
             return np.packbits(bs)
         return bs
+    
+    def bs_lfsr_mat(self, N, ps):
+        """Generate a matrix of packed bitstreams with specified probabilities"""
+        npb = np.ceil(N / 8.0).astype(int)
+        n = len(ps)
+        bs_mat = np.zeros((n, npb), dtype=np.uint8)
+        for i, p in enumerate(ps):
+            bs_mat[i, :] = self.bs_lfsr(N, p, add_zero_state=True)
+        return bs_mat
 
     def bs_lfsr_p5_consts(self, N, num_consts, lfsr_sz, pack=True, add_zero_state=False):
         """Generate a set of parallel 0.5 constants from the same LFSR. Use these for constant generation, precise sampling, etc"""
