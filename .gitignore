@@ -157,3 +157,9 @@ Espresso.exe
 *.in
 HMT_results/HMT_test.txt
 scratch_18.py
+gb4ed_tb.sv
+.gitignore
+gb4_tb.sv
+GBED_gb2_opt_tb.sv
+MAC_relu_*.sv
+

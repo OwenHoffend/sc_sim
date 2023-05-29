@@ -16,7 +16,7 @@ class IO_Params:
         self.k2 = 2**k
 
 def ilog2(a):
-    return np.log2(a).astype(int)
+    return int(np.log2(a).astype(int))
 
 def compute_vout(ptm, ptm_opt, x, io, x_corr=True):
     if x_corr:
@@ -30,7 +30,7 @@ def compute_vout(ptm, ptm_opt, x, io, x_corr=True):
 def compute_pout_sim(ptm, ptm_opt, xvals, io, N):
     rng = bs.SC_RNG()
     var_bs = rng.bs_lfsr_mat(N, xvals)
-    const_bs = rng.bs_lfsr_p5_consts(N, io.nc, ilog2(N), add_zero_state=True)
+    const_bs = rng.bs_lfsr_p5_consts(N, io.nc, 9, add_zero_state=True)
     bs_mat = np.vstack((var_bs, const_bs)) #might need to change this order
     #bs_mat = np.vstack((const_bs, var_bs)) #this line is *probably the wrong order
     bs_out = apply_ptm_to_bs(bs_mat, ptm, packed=True)
@@ -130,9 +130,10 @@ def test_avg_corr(ptm, ptm_opt, xfunc, num_tests, io,  correct_func=None, print_
 
 def rel_err(a, b):
     #return 2 * np.nan_to_num(np.abs(a - b)/(np.abs(a)+np.abs(b)), posinf=0.0)
-    return np.abs(a-b)
+    return (a-b)**2
 
 def test_avg_err(ptm, ptm_opt, xfunc, correct_func, num_tests, io, print_=True, use_ptm=True, N=256):
+    #Average error is reported in terms of RMSE
     c_err = np.zeros(num_tests)
     c_err_opt = np.zeros(num_tests)
     for test_idx in range(num_tests):
@@ -148,8 +149,8 @@ def test_avg_err(ptm, ptm_opt, xfunc, correct_func, num_tests, io, print_=True, 
             pout_opt = np.array([bs.bs_mean(s, bs_len=N) for s in bs_out_opt])
         c_err[test_idx] = rel_err(pout, correct)[0]
         c_err_opt[test_idx] = rel_err(pout_opt, correct)[0]
-    m_c_err = np.mean(c_err)
-    m_c_err_opt = np.mean(c_err_opt)
+    m_c_err = np.sqrt(np.mean(c_err))
+    m_c_err_opt = np.sqrt(np.mean(c_err_opt))
     if print_:
         print(m_c_err)
         print(m_c_err_opt)

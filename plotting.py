@@ -11,56 +11,59 @@ from matplotlib import cm
 #import sim.scc_sat as ss
 import sim.circuits as cir
 
-def plot_random():
-    """Misc plotting"""
-    m = 30
-    x_ = np.linspace(0., 1., m)
-    y_ = np.linspace(0., 1., m)
-    z_ = np.linspace(0., 1., m)
-
-    def scc_of_circ(pc, pmin, pmax):
-        num = pmin*(1.-pc)+pc*(pmax-1.)
-        px = 1.-pc
-        py = pmax - pmin
-        pxpy = px*py
-        if num >= 0.:
-            denom = np.minimum(px, py) - pxpy
-        else:
-            denom = pxpy - np.maximum(px + py - 1, 0)
-        if denom == 0.:
-            return 1.0
-        return num / denom
-
-    xs = []
-    ys = []
-    zs = []
-    sccs = []
-    for x in x_:
-        print(x)
-        for y in y_:
-            for z in z_:
-                if x >= y >= z:
-                    xs.append(x)
-                    ys.append(y)
-                    zs.append(z)
-                    sccs.append(scc_of_circ(y, z, x))
-    fig = plt.figure(figsize=(12,7))
-    ax = fig.add_subplot(projection='3d')
-    img = ax.scatter(xs, ys, zs, c=sccs, cmap=cm.get_cmap('seismic'))
-    fig.colorbar(img)
-
-    ax.set_xlabel('pmax')
-    ax.set_ylabel('pc')
-    ax.set_zlabel('pmin')
-
-    #plt.bar("mux", 0.66, width=0.4, yerr=0.15)
-    #plt.bar("maj", 0.84, width=0.4, yerr=0.07)
-    #plt.bar("opt", 0.88, width=0.4, yerr=0.03)
-    #plt.xlabel("Circuit")
-    #plt.ylabel("Avg SCC")
+def plot_fsm_reco_transfer():
+    data = np.load("fsm_reco_transfer.npy")
+    for i in range(4):
+        plt.scatter(data[0, :, i], data[1, :, i], label="Depth: {}".format(i+1))
+    plt.scatter(data[0, :, 0], data[0, :, 0], label="Depth: {}".format(0))
+    plt.title("FSM reco output SCC vs input SCC")
+    plt.xlabel("Input SCC")
+    plt.ylabel("Output SCC")
+    plt.legend()
     plt.show()
 
-    plt.hist(sccs, rwidth=5, bins='auto')
+def plot_fsm_reco_transfer_3():
+    data = np.load("fsm_reco_transfer_3.npy")
+    labels = ["SCC(Z1, Z2)", "SCC(Z1, Z3)", "SCC(Z2, Z3)"]
+    for i in range(3):
+        plt.plot(data[i+3, :], label=labels[i])
+    plt.title("Output SCC vs FSM depth for ")
+    plt.xlabel("FSM depth d")
+    plt.ylabel("Output SCC")
+    plt.legend()
+    plt.show()
+
+def plot_relu_AND_bias():
+    def relu(x, y, scc):
+        if scc >=0:
+            return scc * np.maximum(x - y, 0) + (1-scc) * x * (1-y)
+        else:
+            return (scc+1) * x * (1-y) - scc*(np.minimum(x, 1-y))
+
+    xvals = np.linspace(0, 1.0, num=1000)
+    y = 0.5
+    plt.plot(xvals, [relu(x, y, 0) for x in xvals], "m:", label="SCC(X, Y) = 0")
+    plt.plot(xvals, [relu(x, y, 0.37) for x in xvals], "r--", label="SCC(X, Y) = 0.37")
+    plt.plot(xvals, [relu(x, y, 0.86) for x in xvals], "b-.", label="SCC(X, Y) = 0.86")
+    plt.plot(xvals, [relu(x, y, 1) for x in xvals], color="green", label="SCC(X, Y) = 1")
+    plt.legend()
+    plt.rcParams['text.usetex'] = True
+    plt.title("ReLU Circuit Function at $P_Y=0.5$")
+    plt.xlabel("X Probability, $P_X$")
+    plt.ylabel("Output Probability, $P_Z$")
+    #yvals = np.linspace(0, 1.0, num=1000)
+    #X, Y = np.meshgrid(xvals, yvals)
+    #Z = np.zeros((len(xvals), len(yvals)))
+    #Z2 = np.zeros((len(xvals), len(yvals)))
+    #for i, x in enumerate(xvals):
+    #    for j, y in enumerate(yvals):
+    #        Z[i, j] = relu(x, y, 0)
+    #        Z2[i, j] = relu(x, y, 1)
+    #fig = plt.figure()
+    #ax = fig.add_subplot(111, projection='3d')
+    #surf = ax.plot_surface(X, Y, Z, cmap=cm.coolwarm)
+    #surf2 = ax.plot_surface(X, Y, Z2)
+
     plt.show()
 
 def plot_img_conv_mse(img_path):

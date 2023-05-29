@@ -6,6 +6,8 @@ from sim.PTM import *
 from sim.SEC import *
 from sim.circuits import mux_1
 from sim.SEC_opt_macros import *
+from sim.seq_recorr import *
+from sim.verilog_gen import espresso_out_to_verilog
 import matplotlib.pyplot as plt
 
 def pcc(cs, val, precision):
@@ -60,17 +62,24 @@ def kernel_2x2(*x, precision = 3,
 
 def test_kernel_2x2():
     precision = 8
-    num_kernels = 25
+    num_kernels = 10
     num_tests = 100
+    max_synopsys_tests = 10
     kernels = np.zeros((num_kernels, 4))
     corrs = np.zeros((num_kernels, 2))
-    errs = np.zeros((num_kernels, 2))
+    errs = np.zeros((num_kernels, 4))
     areas = np.zeros((num_kernels, 2))
 
     #Simulation options
     use_ptm = False
-    N = 2**(precision+1)
+    N = 256
 
+    #num_synopsys_tests = 0
+    #mean_err = 2.8077
+    #mean_area = 1.957
+    #std_err = 1.09
+    #std_area = 0.
+    d = 2
     for kernel_idx in range(num_kernels): 
         kernel = np.random.randint(0, 2**precision, 4).astype(np.float32) / 2**precision
         kernels[kernel_idx, :] = kernel
@@ -98,15 +107,62 @@ def test_kernel_2x2():
         corrs[kernel_idx, 0], corrs[kernel_idx, 1] = corr[1,0], corr_opt[1,0]
 
         relu = SeriesCircuit([ParallelCircuit([NOT(), I(1)]), AND()]).ptm()
-        err, err_opt = test_avg_err(ptm @ relu, ptm_opt @ relu, xfunc, l2_correct_func, num_tests, io, use_ptm=use_ptm, N=N)
+        #reco 
+        for test_idx in range(num_tests):
+            xvals = xfunc()
+            correct = l2_correct_func(xvals)
+            bs_out, bs_out_opt = compute_pout_sim(ptm, ptm_opt, xvals, io, N)
+            bs_out_reco_1, bs_out_reco_2 = fsm_reco_d(bs_out[0, :], bs_out[1, :], d)
+            bs_out_opt_reco_1, bs_out_opt_reco_2 = fsm_reco_d(bs_out_opt[0, :], bs_out_opt[1, :], d)
+            relu_reco = np.bitwise_and(bs_out_reco_1, np.bitwise_not(bs_out_reco_2))
+            relu_reco_opt = np.bitwise_and(bs_out_opt_reco_1, np.bitwise_not(bs_out_opt_reco_2))
+            pz_reco = bs.bs_mean(relu_reco, bs_len=N)
+            pz_reco_opt = bs.bs_mean(relu_reco_opt, bs_len=N)
+            errs[kernel_idx, 2] += (pz_reco - correct) ** 2
+            errs[kernel_idx, 3] += (pz_reco_opt - correct) ** 2
+        errs[kernel_idx, 2] = np.sqrt(errs[kernel_idx, 2] / num_tests)
+        errs[kernel_idx, 3] = np.sqrt(errs[kernel_idx, 3] / num_tests)
+
+        ptm_relu = ptm @ relu
+        ptm_relu_opt =  ptm_opt @ relu
+        err, err_opt = test_avg_err(ptm_relu, ptm_relu_opt, xfunc, l2_correct_func, num_tests, io, use_ptm=use_ptm, N=N, print_=False)
         errs[kernel_idx, 0], errs[kernel_idx, 1] = err, err_opt
 
-        areas[kernel_idx, 0] = espresso_get_SOP_area(ptm, "mux_opt.in")
-        areas[kernel_idx, 1] = espresso_get_SOP_area(ptm_opt, "mux_opt.in")
+        for i in range(4):
+            print(errs[kernel_idx, i])
 
-    print(np.mean(errs, axis=0))
+        #Area analysis
+        #fn_orig = f"MAC_relu_{kernel_idx}"
+        #fn_opt = f"MAC_relu_opt_{kernel_idx}"
+        #areas[kernel_idx, 0] = espresso_get_SOP_area(ptm_relu, fn_orig + ".in")
+        #areas[kernel_idx, 1] = espresso_get_SOP_area(ptm_relu_opt, fn_opt + ".in")
 
-    np.save("2x2_kernels.npy", kernels) #D_ means the DDECs style design, the ones without it have 4 variable inputs not just 2
-    np.save("2x2_corrs.npy", corrs)
-    np.save("2x2_errs.npy", errs)
-    np.save("2x2_areas.npy", areas)
+        #area_scaling = areas[kernel_idx, 1] / areas[kernel_idx, 0]
+        #err_scaling = err / err_opt
+        #if mean_err - std_err <= err_scaling <= mean_err + std_err and \
+        # mean_area - std_area <= area_scaling <= mean_area + std_area and \
+        #    num_synopsys_tests < max_synopsys_tests:
+        #    num_synopsys_tests += 1
+        #    print("Synopsys test found. Num:", num_synopsys_tests)
+        #    espresso_out_to_verilog(fn_orig + ".in", fn_orig)
+        #    espresso_out_to_verilog(fn_opt + ".in", fn_opt)
+
+    errs_scaling = errs[:, 0] / errs[:, 1]
+    area_scaling = areas[:, 1] / areas[:, 0]
+    plt.scatter(errs_scaling, area_scaling)
+    plt.show()
+    
+    m_err_scaling = np.mean(errs_scaling)
+    m_area_scaling = np.mean(area_scaling)
+    std_err_scaling = np.std(errs_scaling)
+    std_area_scaling = np.std(area_scaling)
+
+    print(m_err_scaling)
+    print(m_area_scaling)
+    print(std_err_scaling)
+    print(std_area_scaling)
+
+    #np.save("2x2_kernels.npy", kernels) #D_ means the DDECs style design, the ones without it have 4 variable inputs not just 2
+    #np.save("2x2_corrs.npy", corrs)
+    #np.save("2x2_errs.npy", errs)
+    #np.save("2x2_areas.npy", areas)

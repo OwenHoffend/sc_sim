@@ -82,7 +82,7 @@ class SC_RNG:
             return np.packbits(result)
         return result
 
-    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, init_state=None, pack=True, add_zero_state=False, lfsr_sz=None): #Warning: when keep_rng=False, runtime is very slow 
+    def bs_lfsr(self, n, p, keep_rng=True, inv=False, save_init=False, init_state=None, pack=True, add_zero_state=True, lfsr_sz=None): #Warning: when keep_rng=False, runtime is very slow 
         """Generate a stochastic bitstream using an appropriately-sized simulated LFSR"""
         if lfsr_sz is None:
             lfsr_sz = int(np.ceil(np.log2(n)))
@@ -96,13 +96,13 @@ class SC_RNG:
             return np.packbits(bs)
         return bs
     
-    def bs_lfsr_mat(self, N, ps):
+    def bs_lfsr_mat(self, N, ps, keep_rng=True):
         """Generate a matrix of packed bitstreams with specified probabilities"""
         npb = np.ceil(N / 8.0).astype(int)
         n = len(ps)
         bs_mat = np.zeros((n, npb), dtype=np.uint8)
         for i, p in enumerate(ps):
-            bs_mat[i, :] = self.bs_lfsr(N, p, add_zero_state=True)
+            bs_mat[i, :] = self.bs_lfsr(N, p, keep_rng=keep_rng)
         return bs_mat
 
     def bs_lfsr_p5_consts(self, N, num_consts, lfsr_sz, pack=True, add_zero_state=False):

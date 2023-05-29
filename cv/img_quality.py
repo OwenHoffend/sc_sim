@@ -1,6 +1,9 @@
 #Metrics to compare image quality
 import numpy as np
 from skimage.metrics import structural_similarity as ssim_
+from skimage.metrics import normalized_root_mse as nrmse_
+from skimage.metrics import peak_signal_noise_ratio as psnr_
+from cv.img_io import disp_img
 
 def ssim(A, B): #Wrapper for skimage ssim func with default parameters that I use
     return ssim_(
@@ -13,6 +16,12 @@ def ssim(A, B): #Wrapper for skimage ssim func with default parameters that I us
         K2=0.03
     )
 
+def nrmse(A, B):
+    return nrmse_(B, A)
+
+def psnr(A, B):
+    return psnr_(B, A, data_range=255)
+
 class ConfMat:
     def __init__(self, A, B, thresh = 128):
         ha, wa = A.shape
@@ -21,6 +30,8 @@ class ConfMat:
         assert wa == wb
         A_thresh = A > thresh
         B_thresh = B > thresh
+        #disp_img(A_thresh)
+        #disp_img(B_thresh)
         tp, fp, tn, fn = 0, 0, 0, 0
         for y in range(ha):
             for x in range(wa):

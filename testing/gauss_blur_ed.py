@@ -201,98 +201,148 @@ def test_gauss_blur_3x3():
 def test_gauss_blur_img_bs():
     """test the 4x4 gaussian blur kernel using simulated bitstreams"""
     N = 256
-    num_trials = 1
-    ds = list(range(1, 4))
+    num_trials = 5
+    ds = [1, 2]
     img_dir = "../matlab_test_imgs/gauss_noise/"
+    img_dir_orig = "../matlab_test_imgs/original/"
     img_list = os.listdir(img_dir)
-    ssims = np.zeros((len(img_list), len(ds), 4)) #4 is the number of MAIN TESTCASEs 
-    img_results = np.zeros(((len(img_list), len(ds), num_trials, 4)), dtype=np.object_)
+    ssims = np.zeros((len(img_list), len(ds), 4)) #4 is the number of MAIN TESTCASEs
+    psnrs = np.zeros_like(ssims)
+    sccs = np.zeros_like(ssims)
+    #img_results = np.zeros(((len(img_list), len(ds), num_trials, 4)), dtype=np.object_)
     for img_idx, img_name in enumerate(img_list):
         print("img: ", img_name)
         #Get the input bitstreams
-        img = np.load(img_dir + img_name)
+        img = np.load(img_dir + img_name)*256
+        img_orig = np.load(img_dir_orig + img_name)*256
         Npb = np.int32(N/8)
         h, w = img.shape
         for trial_idx in range(num_trials):
             print("trial: ", trial_idx)
             rng = bs.SC_RNG()
-            img_bs = img_to_bs(img, rng.bs_lfsr, bs_len=N, lfsr_sz=8, scale=False)
+            img_bs = img_to_bs(img, rng.bs_lfsr, bs_len=N, lfsr_sz=8)
             const_bs = rng.bs_lfsr_p5_consts(N, 5, 8, add_zero_state=True)
 
             #MAIN TESTCASE --> Un-optimized design
-            gb4_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8) #32 = N/8 (256/8)
-            for y in range(h-3):
-                #print("y: ", y)
-                for x in range(w-3):
-                    gb4_out[y, x, :] = apply_gauss_4x4_ed(img_bs, x, y, const_bs)
+            #gb4_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8) #32 = N/8 (256/8)
+            #for y in range(h-3):
+            #    #print("y: ", y)
+            #    for x in range(w-3):
+            #        gb4_out[y, x, :] = apply_gauss_4x4_ed(img_bs, x, y, const_bs)
             #np.save("gb4_cameraman_bs.npy", gb4_out)
             #gb4_out = np.load("gb4_cameraman_bs.npy")
-            img_gb4 = bs_to_img(gb4_out, bs_mean)
+            #img_gb4 = bs_to_img(gb4_out, bs_mean)
             #disp_img(255-img_gb4)
 
-            #GET THE CORRECT OUTPUT
+            #GET THE CORRECT OUTPUT - ground truth edges
             gb4_correct = np.zeros((h-3, w-3))
             for y in range(h-3):
                 #print("y: ", y)
                 for x in range(w-3):
-                    gb4_correct[y, x] = apply_gauss_4x4_ed(img, x, y, const_bs, exact=True) #<-- was img_orig, which unnecessarily converts to/from bitstreams
+                    gb4_correct[y, x] = apply_gauss_4x4_ed(img_orig, x, y, const_bs, exact=True)
             #disp_img(255-gb4_correct)
 
-            ssim_orig = ssim(img_gb4, gb4_correct) #un-optimized gb4
+            #ssim_orig = ssim(img_gb4, gb4_correct) #un-optimized gb4
+            #psnr_orig = psnr(img_gb4, gb4_correct)
 
             for d_idx, d in enumerate(ds):
                 print("d: ", d)
 
                 #MAIN TESTCASE --> Optimized design
-                gb4_opt_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
-                gb4_both_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
+                #gb4_opt_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
+                #gb4_both_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
                 gb4_opt_ptm = np.load("gb4_gb2_opt_ptm.npy") #<-- change this
+
+                scc_opt = 0.0
+                scc_both = 0.0
                 for y in range(h-3):
                     #print("y: ", y)
                     for x in range(w-3):
                         bs_mat = np.array(extract_gauss_4x4_inputs(img_bs, x, y, const_bs[:4]))
                         gb4_layer_opt = apply_ptm_to_bs(bs_mat, gb4_opt_ptm, packed=True)
-                        gb4_opt_out[y, x, :] = robert_cross_r(gb4_layer_opt[0], gb4_layer_opt[3], gb4_layer_opt[1], gb4_layer_opt[2], const_bs[4])
+                        #gb4_opt_out[y, x, :] = robert_cross_r(gb4_layer_opt[0], gb4_layer_opt[3], gb4_layer_opt[1], gb4_layer_opt[2], const_bs[4])
 
                         #MAIN TESTCASE --> Optimized design AND sequential recorrelation
+                        scc_opt += bs_scc(gb4_layer_opt[0], gb4_layer_opt[3], bs_len=N)
                         reco_00, reco_11 = fsm_reco_d(gb4_layer_opt[0], gb4_layer_opt[3], d, packed=True)
-                        reco_01, reco_10 = fsm_reco_d(gb4_layer_opt[1], gb4_layer_opt[2], d, packed=True)
-                        gb4_both_out[y, x, :] = robert_cross_r(reco_00, reco_11, reco_01, reco_10, const_bs[4])
+                        #reco_01, reco_10 = fsm_reco_d(gb4_layer_opt[1], gb4_layer_opt[2], d, packed=True)
+                        #gb4_both_out[y, x, :] = robert_cross_r(reco_00, reco_11, reco_01, reco_10, const_bs[4])
+                        scc_both += bs_scc(reco_00, reco_11, bs_len=N)
+                scc_opt /= (h-3)*(w-3)
+                scc_both /= (h-3)*(w-3)
                         
-                img_gb4_opt = bs_to_img(gb4_opt_out, bs_mean)
-                img_gb4_both = bs_to_img(gb4_both_out, bs_mean)
+                #img_gb4_opt = bs_to_img(gb4_opt_out, bs_mean)
+                #img_gb4_both = bs_to_img(gb4_both_out, bs_mean)
                 #disp_img(255-img_gb4_opt)
                 #disp_img(255-img_gb4_both)
 
                 #MAIN TESTCASE --> Sequential re-correlation on its own
-                gb4_reco_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
+                #gb4_reco_out = np.zeros((h-3, w-3, Npb), dtype=np.uint8)
+                scc_orig = 0.0
+                scc_reco = 0.0
                 for y in range(h-3):
                     for x in range(w-3):
                         gb4_layer = apply_gauss_4x4(img_bs, x, y, const_bs[:4], N) #shape (2, 2, N/8)
+                        scc_orig += bs_scc(gb4_layer[0, 0, :], gb4_layer[1, 1, :], bs_len=N)
                         reco_00, reco_11 = fsm_reco_d(gb4_layer[0, 0, :], gb4_layer[1, 1, :], d, packed=True)
-                        reco_01, reco_10 = fsm_reco_d(gb4_layer[0, 1, :], gb4_layer[1, 0, :], d, packed=True)
-                        gb4_reco_out[y, x, :] = robert_cross_r(reco_00, reco_11, reco_01, reco_10, const_bs[4])
-                img_gb4_reco = bs_to_img(gb4_reco_out, bs_mean)
+                        #reco_01, reco_10 = fsm_reco_d(gb4_layer[0, 1, :], gb4_layer[1, 0, :], d, packed=True)
+                        scc_reco += bs_scc(reco_00, reco_11, bs_len=N)
+                        #gb4_reco_out[y, x, :] = robert_cross_r(reco_00, reco_11, reco_01, reco_10, const_bs[4])
+                scc_orig /= (h-3)*(w-3)
+                scc_reco /= (h-3)*(w-3)
+                #img_gb4_reco = bs_to_img(gb4_reco_out, bs_mean)
                 #disp_img(img_gb4_reco)
 
-                ssim_opt = ssim(img_gb4_opt, gb4_correct) #optimized gb4
-                ssim_both = ssim(img_gb4_both, gb4_correct) #optimized gb4 + sequential recorrelation
-                ssim_reco = ssim(img_gb4_reco, gb4_correct) #sequential recorrelation only
-                print(ssim_orig)
-                print(ssim_opt)
-                print(ssim_both)
-                print(ssim_reco)
-                ssims[img_idx, d_idx, 0] += ssim_orig
-                ssims[img_idx, d_idx, 1] += ssim_opt
-                ssims[img_idx, d_idx, 2] += ssim_both
-                ssims[img_idx, d_idx, 3] += ssim_reco
-                img_results[img_idx, d_idx, trial_idx, 0] = gb4_correct
-                img_results[img_idx, d_idx, trial_idx, 1] = img_gb4_opt
-                img_results[img_idx, d_idx, trial_idx, 2] = img_gb4_both
-                img_results[img_idx, d_idx, trial_idx, 3] = img_gb4_reco
+                #ssim_opt = ssim(img_gb4_opt, gb4_correct) #optimized gb4
+                #ssim_both = ssim(img_gb4_both, gb4_correct) #optimized gb4 + sequential recorrelation
+                #ssim_reco = ssim(img_gb4_reco, gb4_correct) #sequential recorrelation only
+                #psnr_opt = psnr(img_gb4_opt, gb4_correct)
+                #psnr_both = psnr(img_gb4_both, gb4_correct)
+                #psnr_reco = psnr(img_gb4_reco, gb4_correct)
+
+                #print("SSIMs:")
+                #print(ssim_orig)
+                #print(ssim_opt)
+                #print(ssim_both)
+                #print(ssim_reco)
+                
+                #print("psnrs:")
+                #print(psnr_orig)
+                #print(psnr_opt)
+                #print(psnr_both)
+                #print(psnr_reco)
+
+                print("SCCs")
+                print(scc_orig)
+                print(scc_opt)
+                print(scc_both)
+                print(scc_reco)
+                
+                #ssims[img_idx, d_idx, 0] += ssim_orig
+                #ssims[img_idx, d_idx, 1] += ssim_opt
+                #ssims[img_idx, d_idx, 2] += ssim_both
+                #ssims[img_idx, d_idx, 3] += ssim_reco
+
+                #psnrs[img_idx, d_idx, 0] += psnr_orig
+                #psnrs[img_idx, d_idx, 1] += psnr_opt
+                #psnrs[img_idx, d_idx, 2] += psnr_both
+                #psnrs[img_idx, d_idx, 3] += psnr_reco
+
+                sccs[img_idx, d_idx, 0] += scc_orig
+                sccs[img_idx, d_idx, 1] += scc_opt
+                sccs[img_idx, d_idx, 2] += scc_both
+                sccs[img_idx, d_idx, 3] += scc_reco
+
+                #img_results[img_idx, d_idx, trial_idx, 0] = gb4_correct
+                #img_results[img_idx, d_idx, trial_idx, 1] = img_gb4_opt
+                #img_results[img_idx, d_idx, trial_idx, 2] = img_gb4_both
+                #img_results[img_idx, d_idx, trial_idx, 3] = img_gb4_reco
     ssims /= num_trials
-    np.save("gb4_ssims_reco_N{}.npy".format(N), ssims)
-    np.save("gb4_img_results_N{}.npy".format(N), img_results)
+    psnrs /= num_trials
+    #np.save("gb4_ssims_reco_N{}.npy".format(N), ssims)
+    #np.save("gb4_psnrs_reco_N{}.npy".format(N), psnrs)
+    np.save("gb4_sccs_reco_N{}.npy".format(N), sccs)
+    #np.save("gb4_img_results_N{}.npy".format(N), img_results)
 
 def compute_conf_mat_stats(img_str):
     imgs = np.load(img_str, allow_pickle=True)
